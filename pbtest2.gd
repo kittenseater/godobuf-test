@@ -3,7 +3,7 @@ const PROTO_VERSION = 2
 #
 # BSD 3-Clause License
 #
-# Copyright (c) 2018, Oleg Malyavkin
+# Copyright (c) 2018 - 2020, Oleg Malyavkin
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,6 +30,9 @@ const PROTO_VERSION = 2
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# DEBUG_TAB redefine this "  " if you need, example: const DEBUG_TAB = "\t"
+const DEBUG_TAB : String = "  "
 
 enum PB_ERR {
 	NO_ERRORS = 0,
@@ -130,54 +133,47 @@ enum PB_SERVICE_STATE {
 }
 
 class PBField:
-	func _init(a_type, a_rule, a_tag, packed, a_value = null):
+	func _init(a_name : String, a_type : int, a_rule : int, a_tag : int, packed : bool, a_value = null):
+		name = a_name
 		type = a_type
 		rule = a_rule
 		tag = a_tag
 		option_packed = packed
 		value = a_value
-	var type
-	var rule
-	var tag
-	var option_packed
+	var name : String
+	var type : int
+	var rule : int
+	var tag : int
+	var option_packed : bool
 	var value
-	var option_default = false
-
-class PBLengthDelimitedField:
-	var type = null
-	var tag = null
-	var begin = null
-	var size = null
-
-class PBUnpackedField:
-	var offset
-	var field
+	var option_default : bool = false
 
 class PBTypeTag:
-	var type = null
-	var tag = null
-	var offset = null
+	var ok : bool = false
+	var type : int
+	var tag : int
+	var offset : int
 
 class PBServiceField:
-	var field
+	var field : PBField
 	var func_ref = null
-	var state = PB_SERVICE_STATE.UNFILLED
+	var state : int = PB_SERVICE_STATE.UNFILLED
 
 class PBPacker:
-	static func convert_signed(n):
+	static func convert_signed(n : int) -> int:
 		if n < -2147483648:
 			return (n << 1) ^ (n >> 63)
 		else:
 			return (n << 1) ^ (n >> 31)
-	
-	static func deconvert_signed(n):
+
+	static func deconvert_signed(n : int) -> int:
 		if n & 0x01:
 			return ~(n >> 1)
 		else:
 			return (n >> 1)
-	
-	static func pack_varint(value):
-		var varint = PoolByteArray()
+
+	static func pack_varint(value) -> PoolByteArray:
+		var varint : PoolByteArray = PoolByteArray()
 		if typeof(value) == TYPE_BOOL:
 			if value:
 				value = 1
@@ -194,15 +190,15 @@ class PBPacker:
 		if varint.size() == 9 && varint[8] == 0xFF:
 			varint.append(0x01)
 		return varint
-		
-	static func pack_bytes(value, count, data_type):
-		var bytes = PoolByteArray()
+
+	static func pack_bytes(value, count : int, data_type : int) -> PoolByteArray:
+		var bytes : PoolByteArray = PoolByteArray()
 		if data_type == PB_DATA_TYPE.FLOAT:
-			var spb = StreamPeerBuffer.new()
+			var spb : StreamPeerBuffer = StreamPeerBuffer.new()
 			spb.put_float(value)
 			bytes = spb.get_data_array()
 		elif data_type == PB_DATA_TYPE.DOUBLE:
-			var spb = StreamPeerBuffer.new()
+			var spb : StreamPeerBuffer = StreamPeerBuffer.new()
 			spb.put_double(value)
 			bytes = spb.get_data_array()
 		else:
@@ -210,17 +206,17 @@ class PBPacker:
 				bytes.append(value & 0xFF)
 				value >>= 8
 		return bytes
-		
-	static func unpack_bytes(bytes, index, count, data_type):
+
+	static func unpack_bytes(bytes : PoolByteArray, index : int, count : int, data_type : int):
 		var value = 0
 		if data_type == PB_DATA_TYPE.FLOAT:
-			var spb = StreamPeerBuffer.new()
+			var spb : StreamPeerBuffer = StreamPeerBuffer.new()
 			for i in range(index, count + index):
 				spb.put_u8(bytes[i])
 			spb.seek(0)
 			value = spb.get_float()
 		elif data_type == PB_DATA_TYPE.DOUBLE:
-			var spb = StreamPeerBuffer.new()
+			var spb : StreamPeerBuffer = StreamPeerBuffer.new()
 			for i in range(index, count + index):
 				spb.put_u8(bytes[i])
 			spb.seek(0)
@@ -231,58 +227,44 @@ class PBPacker:
 				if i != index:
 					value <<= 8
 		return value
-	
-	static func unpack_varint(varint_bytes):
-		var value = 0
+
+	static func unpack_varint(varint_bytes) -> int:
+		var value : int = 0
 		for i in range(varint_bytes.size() - 1, -1, -1):
 			value |= varint_bytes[i] & 0x7F
 			if i != 0:
 				value <<= 7
 		return value
-	
-	static func pack_type_tag(type, tag):
+
+	static func pack_type_tag(type : int, tag : int) -> PoolByteArray:
 		return pack_varint((tag << 3) | type)
-	
-	static func isolate_varint(bytes, index):
-		var result = PoolByteArray()
+
+	static func isolate_varint(bytes : PoolByteArray, index : int) -> PoolByteArray:
+		var result : PoolByteArray = PoolByteArray()
 		for i in range(index, bytes.size()):
 			result.append(bytes[i])
 			if !(bytes[i] & 0x80):
 				break
 		return result
-	
-	static func unpack_type_tag(bytes, index):
-		var varint_bytes = isolate_varint(bytes, index)
-		var result = PBTypeTag.new()
+
+	static func unpack_type_tag(bytes : PoolByteArray, index : int) -> PBTypeTag:
+		var varint_bytes : PoolByteArray = isolate_varint(bytes, index)
+		var result : PBTypeTag = PBTypeTag.new()
 		if varint_bytes.size() != 0:
+			result.ok = true
 			result.offset = varint_bytes.size()
-			var unpacked = unpack_varint(varint_bytes)
+			var unpacked : int = unpack_varint(varint_bytes)
 			result.type = unpacked & 0x07
 			result.tag = unpacked >> 3
 		return result
-	
-	static func pack_length_delimeted(type, tag, bytes):
-		var result = pack_type_tag(type, tag)
+
+	static func pack_length_delimeted(type : int, tag : int, bytes : PoolByteArray) -> PoolByteArray:
+		var result : PoolByteArray = pack_type_tag(type, tag)
 		result.append_array(pack_varint(bytes.size()))
 		result.append_array(bytes)
 		return result
-		
-	static func unpack_length_delimiter(bytes, index):
-		var result = PBLengthDelimitedField.new()
-		var type_tag = unpack_type_tag(bytes, index)
-		var offset = type_tag.offset
-		if offset != null:
-			result.type = type_tag.type
-			result.tag = type_tag.tag
-			var size = isolate_varint(bytes, offset)
-			if size > 0:
-				offset += size
-				if bytes.size() >= size + offset:
-					result.begin = offset
-					result.size = size
-		return result
-		
-	static func pb_type_from_data_type(data_type):
+
+	static func pb_type_from_data_type(data_type : int) -> int:
 		if data_type == PB_DATA_TYPE.INT32 || data_type == PB_DATA_TYPE.SINT32 || data_type == PB_DATA_TYPE.UINT32 || data_type == PB_DATA_TYPE.INT64 || data_type == PB_DATA_TYPE.SINT64 || data_type == PB_DATA_TYPE.UINT64 || data_type == PB_DATA_TYPE.BOOL || data_type == PB_DATA_TYPE.ENUM:
 			return PB_TYPE.VARINT
 		elif data_type == PB_DATA_TYPE.FIXED32 || data_type == PB_DATA_TYPE.SFIXED32 || data_type == PB_DATA_TYPE.FLOAT:
@@ -293,14 +275,14 @@ class PBPacker:
 			return PB_TYPE.LENGTHDEL
 		else:
 			return PB_TYPE.UNDEFINED
-			
-	static func pack_field(field):
-		var type = pb_type_from_data_type(field.type)
-		var type_copy = type
+
+	static func pack_field(field : PBField) -> PoolByteArray:
+		var type : int = pb_type_from_data_type(field.type)
+		var type_copy : int = type
 		if field.rule == PB_RULE.REPEATED && field.option_packed:
 			type = PB_TYPE.LENGTHDEL
-		var head = pack_type_tag(type, field.tag)
-		var data = PoolByteArray()
+		var head : PoolByteArray = pack_type_tag(type, field.tag)
+		var data : PoolByteArray = PoolByteArray()
 		if type == PB_TYPE.VARINT:
 			var value
 			if field.rule == PB_RULE.REPEATED:
@@ -338,7 +320,7 @@ class PBPacker:
 			if field.rule == PB_RULE.REPEATED:
 				if type_copy == PB_TYPE.VARINT:
 					if field.type == PB_DATA_TYPE.SINT32 || field.type == PB_DATA_TYPE.SINT64:
-						var signed_value
+						var signed_value : int
 						for v in field.value:
 							signed_value = convert_signed(v)
 							data.append_array(pack_varint(signed_value))
@@ -365,21 +347,17 @@ class PBPacker:
 					return data
 				elif typeof(field.value[0]) == TYPE_OBJECT:
 					for v in field.value:
-						var obj = v.to_bytes()
+						var obj : PoolByteArray = v.to_bytes()
 						#if obj != null && obj.size() > 0:
 						#	data.append_array(pack_length_delimeted(type, field.tag, obj))
 						#else:
 						#	data = PoolByteArray()
 						#	return data
-						if obj != null:#
-							data.append_array(pack_length_delimeted(type, field.tag, obj))#
-						else:#
-							data = PoolByteArray()#
-							return data#
+						data.append_array(pack_length_delimeted(type, field.tag, obj))
 					return data
 			else:
 				if field.type == PB_DATA_TYPE.STRING:
-					var str_bytes = field.value.to_utf8()
+					var str_bytes : PoolByteArray = field.value.to_utf8()
 					if PROTO_VERSION == 2 || (PROTO_VERSION == 3 && str_bytes.size() > 0):
 						data.append_array(str_bytes)
 						return pack_length_delimeted(type, field.tag, data)
@@ -388,14 +366,13 @@ class PBPacker:
 						data.append_array(field.value)
 						return pack_length_delimeted(type, field.tag, data)
 				elif typeof(field.value) == TYPE_OBJECT:
-					var obj = field.value.to_bytes()
+					var obj : PoolByteArray = field.value.to_bytes()
 					#if obj != null && obj.size() > 0:
 					#	data.append_array(obj)
 					#	return pack_length_delimeted(type, field.tag, data)
-					if obj != null:#
-						if obj.size() > 0:#
-							data.append_array(obj)#
-						return pack_length_delimeted(type, field.tag, data)#
+					if obj.size() > 0:
+						data.append_array(obj)
+					return pack_length_delimeted(type, field.tag, data)
 				else:
 					pass
 		if data.size() > 0:
@@ -404,7 +381,7 @@ class PBPacker:
 		else:
 			return data
 
-	static func unpack_field(bytes, offset, field, type, message_func_ref):
+	static func unpack_field(bytes : PoolByteArray, offset : int, field : PBField, type : int, message_func_ref) -> int:
 		if field.rule == PB_RULE.REPEATED && type != PB_TYPE.LENGTHDEL && field.option_packed:
 			var count = isolate_varint(bytes, offset)
 			if count.size() > 0:
@@ -504,7 +481,7 @@ class PBPacker:
 							else:
 								return offset
 						elif field.type == PB_DATA_TYPE.STRING:
-							var str_bytes = PoolByteArray()
+							var str_bytes : PoolByteArray = PoolByteArray()
 							for i in range(offset, inner_size + offset):
 								str_bytes.append(bytes[i])
 							if field.rule == PB_RULE.REPEATED:
@@ -513,7 +490,7 @@ class PBPacker:
 								field.value = str_bytes.get_string_from_utf8()
 							return offset + inner_size
 						elif field.type == PB_DATA_TYPE.BYTES:
-							var val_bytes = PoolByteArray()
+							var val_bytes : PoolByteArray = PoolByteArray()
 							for i in range(offset, inner_size + offset):
 								val_bytes.append(bytes[i])
 							if field.rule == PB_RULE.REPEATED:
@@ -526,17 +503,17 @@ class PBPacker:
 				else:
 					return PB_ERR.LENGTHDEL_SIZE_NOT_FOUND
 		return PB_ERR.UNDEFINED_STATE
-	
-	static func unpack_message(data, bytes, offset, limit):
+
+	static func unpack_message(data, bytes : PoolByteArray, offset : int, limit : int) -> int:
 		while true:
-			var tt = unpack_type_tag(bytes, offset)
-			if tt.offset != null:
+			var tt : PBTypeTag = unpack_type_tag(bytes, offset)
+			if tt.ok:
 				offset += tt.offset
 				if data.has(tt.tag):
-					var service = data[tt.tag]
-					var type = pb_type_from_data_type(service.field.type)
+					var service : PBServiceField = data[tt.tag]
+					var type : int = pb_type_from_data_type(service.field.type)
 					if type == tt.type || (tt.type == PB_TYPE.LENGTHDEL && service.field.rule == PB_RULE.REPEATED && service.field.option_packed):
-						var res = unpack_field(bytes, offset, service.field, type, service.func_ref)
+						var res : int = unpack_field(bytes, offset, service.field, type, service.func_ref)
 						if res > 0:
 							service.state = PB_SERVICE_STATE.FILLED
 							offset = res
@@ -551,15 +528,15 @@ class PBPacker:
 			else:
 				return offset
 		return PB_ERR.UNDEFINED_STATE
-	
-	static func pack_message(data):
+
+	static func pack_message(data) -> PoolByteArray:
 		var DEFAULT_VALUES
 		if PROTO_VERSION == 2:
 			DEFAULT_VALUES = DEFAULT_VALUES_2
 		elif PROTO_VERSION == 3:
 			DEFAULT_VALUES = DEFAULT_VALUES_3
-		var result = PoolByteArray()
-		var keys = data.keys()
+		var result : PoolByteArray = PoolByteArray()
+		var keys : Array = data.keys()
 		keys.sort()
 		for i in keys:
 			if data[i].field.value != null:
@@ -570,88 +547,117 @@ class PBPacker:
 				result.append_array(pack_field(data[i].field))
 			elif data[i].field.rule == PB_RULE.REQUIRED:
 				print("Error: required field is not filled: Tag:", data[i].field.tag)
-				return null
+				return PoolByteArray()
 		return result
-		
-	static func check_required(data):
-		var keys = data.keys()
+
+	static func check_required(data) -> bool:
+		var keys : Array = data.keys()
 		for i in keys:
 			if data[i].field.rule == PB_RULE.REQUIRED && data[i].state == PB_SERVICE_STATE.UNFILLED:
 				return false
 		return true
-		
+
 	static func construct_map(key_values):
 		var result = {}
 		for kv in key_values:
 			result[kv.get_key()] = kv.get_value()
 		return result
+	
+	static func tabulate(text : String, nesting : int) -> String:
+		var tab : String = ""
+		for i in range(nesting):
+			tab += DEBUG_TAB
+		return tab + text
+	
+	static func value_to_string(value, field : PBField, nesting : int) -> String:
+		var result : String = ""
+		var text : String
+		if field.type == PB_DATA_TYPE.MESSAGE:
+			result += "{"
+			nesting += 1
+			text = message_to_string(value.data, nesting)
+			if text != "":
+				result += "\n" + text
+				nesting -= 1
+				result += tabulate("}", nesting)
+			else:
+				nesting -= 1
+				result += "}"
+		elif field.type == PB_DATA_TYPE.BYTES:
+			result += "<"
+			for i in range(value.size()):
+				result += String(value[i])
+				if i != (value.size() - 1):
+					result += ", "
+			result += ">"
+		elif field.type == PB_DATA_TYPE.STRING:
+			result += "\"" + value + "\""
+		elif field.type == PB_DATA_TYPE.ENUM:
+			result += "ENUM::" + String(value)
+		else:
+			result += String(value)
+		return result
+	
+	static func field_to_string(field : PBField, nesting : int) -> String:
+		var result : String = tabulate(field.name + ": ", nesting)
+		if field.type == PB_DATA_TYPE.MAP:
+			if field.value.size() > 0:
+				result += "(\n"
+				nesting += 1
+				for i in range(field.value.size()):
+					var local_key_value = field.value[i].data[1].field
+					result += tabulate(value_to_string(local_key_value.value, local_key_value, nesting), nesting) + ": "
+					local_key_value = field.value[i].data[2].field
+					result += value_to_string(local_key_value.value, local_key_value, nesting)
+					if i != (field.value.size() - 1):
+						result += ","
+					result += "\n"
+				nesting -= 1
+				result += tabulate(")", nesting)
+			else:
+				result += "()"
+		elif field.rule == PB_RULE.REPEATED:
+			if field.value.size() > 0:
+				result += "[\n"
+				nesting += 1
+				for i in range(field.value.size()):
+					result += tabulate(String(i) + ": ", nesting)
+					result += value_to_string(field.value[i], field, nesting)
+					if i != (field.value.size() - 1):
+						result += ","
+					result += "\n"
+				nesting -= 1
+				result += tabulate("]", nesting)
+			else:
+				result += "[]"
+		else:
+			result += value_to_string(field.value, field, nesting)
+		result += ";\n"
+		return result
+		
+	static func message_to_string(data, nesting : int = 0) -> String:
+		var DEFAULT_VALUES
+		if PROTO_VERSION == 2:
+			DEFAULT_VALUES = DEFAULT_VALUES_2
+		elif PROTO_VERSION == 3:
+			DEFAULT_VALUES = DEFAULT_VALUES_3
+		var result : String = ""
+		var keys : Array = data.keys()
+		keys.sort()
+		for i in keys:
+			if data[i].field.value != null:
+				if typeof(data[i].field.value) == typeof(DEFAULT_VALUES[data[i].field.type]) && data[i].field.value == DEFAULT_VALUES[data[i].field.type]:
+					continue
+				elif data[i].field.rule == PB_RULE.REPEATED && data[i].field.value.size() == 0:
+					continue
+				result += field_to_string(data[i].field, nesting)
+			elif data[i].field.rule == PB_RULE.REQUIRED:
+				result += data[i].field.name + ": " + "error"
+		return result
+
 
 
 ############### USER DATA BEGIN ################
-class Test0:
-	func _init():
-		pass
-		
-class Test1:
-	func _init():
-		pass
-		
-	class map_type_f_map:
-		func _init():
-			pass
-			
-class Test2:
-	func _init():
-		pass
-		
-	class TestInner1:
-		func _init():
-			pass
-			
-	class TestInner2:
-		func _init():
-			pass
-			
-	class TestInner3:
-		func _init():
-			pass
-			
-		class TestInner3_1:
-			func _init():
-				pass
-				
-		class TestInner3_2:
-			func _init():
-				pass
-				
-		class map_type_f1:
-			func _init():
-				pass
-				
-class Test3:
-	func _init():
-		pass
-		
-	class InnerReq:
-		func _init():
-			pass
-			
-	class InnerOpt:
-		func _init():
-			pass
-			
-	class InnerRep:
-		func _init():
-			pass
-			
-class Test4:
-	func _init():
-		pass
-		
-	class map_type_f5:
-		func _init():
-			pass
-			
 
 
 class Test0:
@@ -660,10 +666,13 @@ class Test0:
 		
 	var data = {}
 	
-	func to_bytes():
+	func to_string() -> String:
+		return PBPacker.message_to_string(data)
+		
+	func to_bytes() -> PoolByteArray:
 		return PBPacker.pack_message(data)
 		
-	func from_bytes(bytes, offset = 0, limit = -1):
+	func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 		var cur_limit = bytes.size()
 		if limit != -1:
 			cur_limit = limit
@@ -690,282 +699,282 @@ class Test1:
 	func _init():
 		var service
 		
-		_f_double = PBField.new(PB_DATA_TYPE.DOUBLE, PB_RULE.OPTIONAL, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.DOUBLE])
+		_f_double = PBField.new("f_double", PB_DATA_TYPE.DOUBLE, PB_RULE.OPTIONAL, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.DOUBLE])
 		service = PBServiceField.new()
 		service.field = _f_double
 		data[_f_double.tag] = service
 		
-		_f_float = PBField.new(PB_DATA_TYPE.FLOAT, PB_RULE.OPTIONAL, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT])
+		_f_float = PBField.new("f_float", PB_DATA_TYPE.FLOAT, PB_RULE.OPTIONAL, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT])
 		service = PBServiceField.new()
 		service.field = _f_float
 		data[_f_float.tag] = service
 		
-		_f_int32 = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.OPTIONAL, 3, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
+		_f_int32 = PBField.new("f_int32", PB_DATA_TYPE.INT32, PB_RULE.OPTIONAL, 3, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
 		service = PBServiceField.new()
 		service.field = _f_int32
 		data[_f_int32.tag] = service
 		
-		_f_int64 = PBField.new(PB_DATA_TYPE.INT64, PB_RULE.OPTIONAL, 4, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT64])
+		_f_int64 = PBField.new("f_int64", PB_DATA_TYPE.INT64, PB_RULE.OPTIONAL, 4, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT64])
 		service = PBServiceField.new()
 		service.field = _f_int64
 		data[_f_int64.tag] = service
 		
-		_f_uint32 = PBField.new(PB_DATA_TYPE.UINT32, PB_RULE.OPTIONAL, 5, false, DEFAULT_VALUES_2[PB_DATA_TYPE.UINT32])
+		_f_uint32 = PBField.new("f_uint32", PB_DATA_TYPE.UINT32, PB_RULE.OPTIONAL, 5, false, DEFAULT_VALUES_2[PB_DATA_TYPE.UINT32])
 		service = PBServiceField.new()
 		service.field = _f_uint32
 		data[_f_uint32.tag] = service
 		
-		_f_uint64 = PBField.new(PB_DATA_TYPE.UINT64, PB_RULE.OPTIONAL, 6, false, DEFAULT_VALUES_2[PB_DATA_TYPE.UINT64])
+		_f_uint64 = PBField.new("f_uint64", PB_DATA_TYPE.UINT64, PB_RULE.OPTIONAL, 6, false, DEFAULT_VALUES_2[PB_DATA_TYPE.UINT64])
 		service = PBServiceField.new()
 		service.field = _f_uint64
 		data[_f_uint64.tag] = service
 		
-		_f_sint32 = PBField.new(PB_DATA_TYPE.SINT32, PB_RULE.OPTIONAL, 7, false, DEFAULT_VALUES_2[PB_DATA_TYPE.SINT32])
+		_f_sint32 = PBField.new("f_sint32", PB_DATA_TYPE.SINT32, PB_RULE.OPTIONAL, 7, false, DEFAULT_VALUES_2[PB_DATA_TYPE.SINT32])
 		service = PBServiceField.new()
 		service.field = _f_sint32
 		data[_f_sint32.tag] = service
 		
-		_f_sint64 = PBField.new(PB_DATA_TYPE.SINT64, PB_RULE.OPTIONAL, 8, false, DEFAULT_VALUES_2[PB_DATA_TYPE.SINT64])
+		_f_sint64 = PBField.new("f_sint64", PB_DATA_TYPE.SINT64, PB_RULE.OPTIONAL, 8, false, DEFAULT_VALUES_2[PB_DATA_TYPE.SINT64])
 		service = PBServiceField.new()
 		service.field = _f_sint64
 		data[_f_sint64.tag] = service
 		
-		_f_fixed32 = PBField.new(PB_DATA_TYPE.FIXED32, PB_RULE.OPTIONAL, 9, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED32])
+		_f_fixed32 = PBField.new("f_fixed32", PB_DATA_TYPE.FIXED32, PB_RULE.OPTIONAL, 9, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED32])
 		service = PBServiceField.new()
 		service.field = _f_fixed32
 		data[_f_fixed32.tag] = service
 		
-		_f_fixed64 = PBField.new(PB_DATA_TYPE.FIXED64, PB_RULE.OPTIONAL, 10, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED64])
+		_f_fixed64 = PBField.new("f_fixed64", PB_DATA_TYPE.FIXED64, PB_RULE.OPTIONAL, 10, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED64])
 		service = PBServiceField.new()
 		service.field = _f_fixed64
 		data[_f_fixed64.tag] = service
 		
-		_f_sfixed32 = PBField.new(PB_DATA_TYPE.SFIXED32, PB_RULE.OPTIONAL, 11, false, DEFAULT_VALUES_2[PB_DATA_TYPE.SFIXED32])
+		_f_sfixed32 = PBField.new("f_sfixed32", PB_DATA_TYPE.SFIXED32, PB_RULE.OPTIONAL, 11, false, DEFAULT_VALUES_2[PB_DATA_TYPE.SFIXED32])
 		service = PBServiceField.new()
 		service.field = _f_sfixed32
 		data[_f_sfixed32.tag] = service
 		
-		_f_sfixed64 = PBField.new(PB_DATA_TYPE.SFIXED64, PB_RULE.OPTIONAL, 12, false, DEFAULT_VALUES_2[PB_DATA_TYPE.SFIXED64])
+		_f_sfixed64 = PBField.new("f_sfixed64", PB_DATA_TYPE.SFIXED64, PB_RULE.OPTIONAL, 12, false, DEFAULT_VALUES_2[PB_DATA_TYPE.SFIXED64])
 		service = PBServiceField.new()
 		service.field = _f_sfixed64
 		data[_f_sfixed64.tag] = service
 		
-		_f_bool = PBField.new(PB_DATA_TYPE.BOOL, PB_RULE.OPTIONAL, 13, false, DEFAULT_VALUES_2[PB_DATA_TYPE.BOOL])
+		_f_bool = PBField.new("f_bool", PB_DATA_TYPE.BOOL, PB_RULE.OPTIONAL, 13, false, DEFAULT_VALUES_2[PB_DATA_TYPE.BOOL])
 		service = PBServiceField.new()
 		service.field = _f_bool
 		data[_f_bool.tag] = service
 		
-		_f_string = PBField.new(PB_DATA_TYPE.STRING, PB_RULE.OPTIONAL, 14, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
+		_f_string = PBField.new("f_string", PB_DATA_TYPE.STRING, PB_RULE.OPTIONAL, 14, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
 		service = PBServiceField.new()
 		service.field = _f_string
 		data[_f_string.tag] = service
 		
-		_f_bytes = PBField.new(PB_DATA_TYPE.BYTES, PB_RULE.OPTIONAL, 15, false, DEFAULT_VALUES_2[PB_DATA_TYPE.BYTES])
+		_f_bytes = PBField.new("f_bytes", PB_DATA_TYPE.BYTES, PB_RULE.OPTIONAL, 15, false, DEFAULT_VALUES_2[PB_DATA_TYPE.BYTES])
 		service = PBServiceField.new()
 		service.field = _f_bytes
 		data[_f_bytes.tag] = service
 		
-		_f_map = PBField.new(PB_DATA_TYPE.MAP, PB_RULE.REPEATED, 16, false, [])
+		_f_map = PBField.new("f_map", PB_DATA_TYPE.MAP, PB_RULE.REPEATED, 16, false, [])
 		service = PBServiceField.new()
 		service.field = _f_map
 		service.func_ref = funcref(self, "add_empty_f_map")
 		data[_f_map.tag] = service
 		
-		_f_oneof_f1 = PBField.new(PB_DATA_TYPE.STRING, PB_RULE.OPTIONAL, 17, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
+		_f_oneof_f1 = PBField.new("f_oneof_f1", PB_DATA_TYPE.STRING, PB_RULE.OPTIONAL, 17, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
 		service = PBServiceField.new()
 		service.field = _f_oneof_f1
 		data[_f_oneof_f1.tag] = service
 		
-		_f_oneof_f2 = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.OPTIONAL, 18, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
+		_f_oneof_f2 = PBField.new("f_oneof_f2", PB_DATA_TYPE.INT32, PB_RULE.OPTIONAL, 18, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
 		service = PBServiceField.new()
 		service.field = _f_oneof_f2
 		data[_f_oneof_f2.tag] = service
 		
-		_f_empty_out = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 19, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+		_f_empty_out = PBField.new("f_empty_out", PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 19, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 		service = PBServiceField.new()
 		service.field = _f_empty_out
 		service.func_ref = funcref(self, "new_f_empty_out")
 		data[_f_empty_out.tag] = service
 		
-		_f_enum_out = PBField.new(PB_DATA_TYPE.ENUM, PB_RULE.OPTIONAL, 20, false, DEFAULT_VALUES_2[PB_DATA_TYPE.ENUM])
+		_f_enum_out = PBField.new("f_enum_out", PB_DATA_TYPE.ENUM, PB_RULE.OPTIONAL, 20, false, DEFAULT_VALUES_2[PB_DATA_TYPE.ENUM])
 		service = PBServiceField.new()
 		service.field = _f_enum_out
 		data[_f_enum_out.tag] = service
 		
-		_f_empty_inner = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 21, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+		_f_empty_inner = PBField.new("f_empty_inner", PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 21, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 		service = PBServiceField.new()
 		service.field = _f_empty_inner
 		service.func_ref = funcref(self, "new_f_empty_inner")
 		data[_f_empty_inner.tag] = service
 		
-		_f_enum_inner = PBField.new(PB_DATA_TYPE.ENUM, PB_RULE.OPTIONAL, 22, false, DEFAULT_VALUES_2[PB_DATA_TYPE.ENUM])
+		_f_enum_inner = PBField.new("f_enum_inner", PB_DATA_TYPE.ENUM, PB_RULE.OPTIONAL, 22, false, DEFAULT_VALUES_2[PB_DATA_TYPE.ENUM])
 		service = PBServiceField.new()
 		service.field = _f_enum_inner
 		data[_f_enum_inner.tag] = service
 		
-		_rf_double = PBField.new(PB_DATA_TYPE.DOUBLE, PB_RULE.REPEATED, 23, false, [])
+		_rf_double = PBField.new("rf_double", PB_DATA_TYPE.DOUBLE, PB_RULE.REPEATED, 23, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_double
 		data[_rf_double.tag] = service
 		
-		_rf_float = PBField.new(PB_DATA_TYPE.FLOAT, PB_RULE.REPEATED, 24, false, [])
+		_rf_float = PBField.new("rf_float", PB_DATA_TYPE.FLOAT, PB_RULE.REPEATED, 24, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_float
 		data[_rf_float.tag] = service
 		
-		_rf_int32 = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.REPEATED, 25, false, [])
+		_rf_int32 = PBField.new("rf_int32", PB_DATA_TYPE.INT32, PB_RULE.REPEATED, 25, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_int32
 		data[_rf_int32.tag] = service
 		
-		_rf_int64 = PBField.new(PB_DATA_TYPE.INT64, PB_RULE.REPEATED, 26, false, [])
+		_rf_int64 = PBField.new("rf_int64", PB_DATA_TYPE.INT64, PB_RULE.REPEATED, 26, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_int64
 		data[_rf_int64.tag] = service
 		
-		_rf_uint32 = PBField.new(PB_DATA_TYPE.UINT32, PB_RULE.REPEATED, 27, false, [])
+		_rf_uint32 = PBField.new("rf_uint32", PB_DATA_TYPE.UINT32, PB_RULE.REPEATED, 27, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_uint32
 		data[_rf_uint32.tag] = service
 		
-		_rf_uint64 = PBField.new(PB_DATA_TYPE.UINT64, PB_RULE.REPEATED, 28, false, [])
+		_rf_uint64 = PBField.new("rf_uint64", PB_DATA_TYPE.UINT64, PB_RULE.REPEATED, 28, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_uint64
 		data[_rf_uint64.tag] = service
 		
-		_rf_sint32 = PBField.new(PB_DATA_TYPE.SINT32, PB_RULE.REPEATED, 29, false, [])
+		_rf_sint32 = PBField.new("rf_sint32", PB_DATA_TYPE.SINT32, PB_RULE.REPEATED, 29, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_sint32
 		data[_rf_sint32.tag] = service
 		
-		_rf_sint64 = PBField.new(PB_DATA_TYPE.SINT64, PB_RULE.REPEATED, 30, false, [])
+		_rf_sint64 = PBField.new("rf_sint64", PB_DATA_TYPE.SINT64, PB_RULE.REPEATED, 30, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_sint64
 		data[_rf_sint64.tag] = service
 		
-		_rf_fixed32 = PBField.new(PB_DATA_TYPE.FIXED32, PB_RULE.REPEATED, 31, false, [])
+		_rf_fixed32 = PBField.new("rf_fixed32", PB_DATA_TYPE.FIXED32, PB_RULE.REPEATED, 31, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_fixed32
 		data[_rf_fixed32.tag] = service
 		
-		_rf_fixed64 = PBField.new(PB_DATA_TYPE.FIXED64, PB_RULE.REPEATED, 32, false, [])
+		_rf_fixed64 = PBField.new("rf_fixed64", PB_DATA_TYPE.FIXED64, PB_RULE.REPEATED, 32, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_fixed64
 		data[_rf_fixed64.tag] = service
 		
-		_rf_sfixed32 = PBField.new(PB_DATA_TYPE.SFIXED32, PB_RULE.REPEATED, 33, false, [])
+		_rf_sfixed32 = PBField.new("rf_sfixed32", PB_DATA_TYPE.SFIXED32, PB_RULE.REPEATED, 33, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_sfixed32
 		data[_rf_sfixed32.tag] = service
 		
-		_rf_sfixed64 = PBField.new(PB_DATA_TYPE.SFIXED64, PB_RULE.REPEATED, 34, false, [])
+		_rf_sfixed64 = PBField.new("rf_sfixed64", PB_DATA_TYPE.SFIXED64, PB_RULE.REPEATED, 34, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_sfixed64
 		data[_rf_sfixed64.tag] = service
 		
-		_rf_bool = PBField.new(PB_DATA_TYPE.BOOL, PB_RULE.REPEATED, 35, false, [])
+		_rf_bool = PBField.new("rf_bool", PB_DATA_TYPE.BOOL, PB_RULE.REPEATED, 35, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_bool
 		data[_rf_bool.tag] = service
 		
-		_rf_string = PBField.new(PB_DATA_TYPE.STRING, PB_RULE.REPEATED, 36, false, [])
+		_rf_string = PBField.new("rf_string", PB_DATA_TYPE.STRING, PB_RULE.REPEATED, 36, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_string
 		data[_rf_string.tag] = service
 		
-		_rf_bytes = PBField.new(PB_DATA_TYPE.BYTES, PB_RULE.REPEATED, 37, false, [])
+		_rf_bytes = PBField.new("rf_bytes", PB_DATA_TYPE.BYTES, PB_RULE.REPEATED, 37, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_bytes
 		data[_rf_bytes.tag] = service
 		
-		_rf_empty_out = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.REPEATED, 38, false, [])
+		_rf_empty_out = PBField.new("rf_empty_out", PB_DATA_TYPE.MESSAGE, PB_RULE.REPEATED, 38, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_empty_out
 		service.func_ref = funcref(self, "add_rf_empty_out")
 		data[_rf_empty_out.tag] = service
 		
-		_rf_enum_out = PBField.new(PB_DATA_TYPE.ENUM, PB_RULE.REPEATED, 39, false, [])
+		_rf_enum_out = PBField.new("rf_enum_out", PB_DATA_TYPE.ENUM, PB_RULE.REPEATED, 39, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_enum_out
 		data[_rf_enum_out.tag] = service
 		
-		_rf_empty_inner = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.REPEATED, 40, false, [])
+		_rf_empty_inner = PBField.new("rf_empty_inner", PB_DATA_TYPE.MESSAGE, PB_RULE.REPEATED, 40, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_empty_inner
 		service.func_ref = funcref(self, "add_rf_empty_inner")
 		data[_rf_empty_inner.tag] = service
 		
-		_rf_enum_inner = PBField.new(PB_DATA_TYPE.ENUM, PB_RULE.REPEATED, 41, false, [])
+		_rf_enum_inner = PBField.new("rf_enum_inner", PB_DATA_TYPE.ENUM, PB_RULE.REPEATED, 41, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_enum_inner
 		data[_rf_enum_inner.tag] = service
 		
-		_rfu_double = PBField.new(PB_DATA_TYPE.DOUBLE, PB_RULE.REPEATED, 42, true, [])
+		_rfu_double = PBField.new("rfu_double", PB_DATA_TYPE.DOUBLE, PB_RULE.REPEATED, 42, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_double
 		data[_rfu_double.tag] = service
 		
-		_rfu_float = PBField.new(PB_DATA_TYPE.FLOAT, PB_RULE.REPEATED, 43, true, [])
+		_rfu_float = PBField.new("rfu_float", PB_DATA_TYPE.FLOAT, PB_RULE.REPEATED, 43, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_float
 		data[_rfu_float.tag] = service
 		
-		_rfu_int32 = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.REPEATED, 44, true, [])
+		_rfu_int32 = PBField.new("rfu_int32", PB_DATA_TYPE.INT32, PB_RULE.REPEATED, 44, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_int32
 		data[_rfu_int32.tag] = service
 		
-		_rfu_int64 = PBField.new(PB_DATA_TYPE.INT64, PB_RULE.REPEATED, 45, true, [])
+		_rfu_int64 = PBField.new("rfu_int64", PB_DATA_TYPE.INT64, PB_RULE.REPEATED, 45, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_int64
 		data[_rfu_int64.tag] = service
 		
-		_rfu_uint32 = PBField.new(PB_DATA_TYPE.UINT32, PB_RULE.REPEATED, 46, true, [])
+		_rfu_uint32 = PBField.new("rfu_uint32", PB_DATA_TYPE.UINT32, PB_RULE.REPEATED, 46, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_uint32
 		data[_rfu_uint32.tag] = service
 		
-		_rfu_uint64 = PBField.new(PB_DATA_TYPE.UINT64, PB_RULE.REPEATED, 47, true, [])
+		_rfu_uint64 = PBField.new("rfu_uint64", PB_DATA_TYPE.UINT64, PB_RULE.REPEATED, 47, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_uint64
 		data[_rfu_uint64.tag] = service
 		
-		_rfu_sint32 = PBField.new(PB_DATA_TYPE.SINT32, PB_RULE.REPEATED, 48, true, [])
+		_rfu_sint32 = PBField.new("rfu_sint32", PB_DATA_TYPE.SINT32, PB_RULE.REPEATED, 48, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_sint32
 		data[_rfu_sint32.tag] = service
 		
-		_rfu_sint64 = PBField.new(PB_DATA_TYPE.SINT64, PB_RULE.REPEATED, 49, true, [])
+		_rfu_sint64 = PBField.new("rfu_sint64", PB_DATA_TYPE.SINT64, PB_RULE.REPEATED, 49, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_sint64
 		data[_rfu_sint64.tag] = service
 		
-		_rfu_fixed32 = PBField.new(PB_DATA_TYPE.FIXED32, PB_RULE.REPEATED, 50, true, [])
+		_rfu_fixed32 = PBField.new("rfu_fixed32", PB_DATA_TYPE.FIXED32, PB_RULE.REPEATED, 50, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_fixed32
 		data[_rfu_fixed32.tag] = service
 		
-		_rfu_fixed64 = PBField.new(PB_DATA_TYPE.FIXED64, PB_RULE.REPEATED, 51, true, [])
+		_rfu_fixed64 = PBField.new("rfu_fixed64", PB_DATA_TYPE.FIXED64, PB_RULE.REPEATED, 51, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_fixed64
 		data[_rfu_fixed64.tag] = service
 		
-		_rfu_sfixed32 = PBField.new(PB_DATA_TYPE.SFIXED32, PB_RULE.REPEATED, 52, true, [])
+		_rfu_sfixed32 = PBField.new("rfu_sfixed32", PB_DATA_TYPE.SFIXED32, PB_RULE.REPEATED, 52, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_sfixed32
 		data[_rfu_sfixed32.tag] = service
 		
-		_rfu_sfixed64 = PBField.new(PB_DATA_TYPE.SFIXED64, PB_RULE.REPEATED, 53, true, [])
+		_rfu_sfixed64 = PBField.new("rfu_sfixed64", PB_DATA_TYPE.SFIXED64, PB_RULE.REPEATED, 53, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_sfixed64
 		data[_rfu_sfixed64.tag] = service
 		
-		_rfu_bool = PBField.new(PB_DATA_TYPE.BOOL, PB_RULE.REPEATED, 54, true, [])
+		_rfu_bool = PBField.new("rfu_bool", PB_DATA_TYPE.BOOL, PB_RULE.REPEATED, 54, true, [])
 		service = PBServiceField.new()
 		service.field = _rfu_bool
 		data[_rfu_bool.tag] = service
 		
-		_rf_inner = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.REPEATED, 55, false, [])
+		_rf_inner = PBField.new("rf_inner", PB_DATA_TYPE.MESSAGE, PB_RULE.REPEATED, 55, false, [])
 		service = PBServiceField.new()
 		service.field = _rf_inner
 		service.func_ref = funcref(self, "add_rf_inner")
@@ -973,138 +982,138 @@ class Test1:
 		
 	var data = {}
 	
-	var _f_double
-	func get_f_double():
+	var _f_double: PBField
+	func get_f_double() -> float:
 		return _f_double.value
-	func clear_f_double():
+	func clear_f_double() -> void:
 		_f_double.value = DEFAULT_VALUES_2[PB_DATA_TYPE.DOUBLE]
-	func set_f_double(value):
+	func set_f_double(value : float) -> void:
 		_f_double.value = value
 	
-	var _f_float
-	func get_f_float():
+	var _f_float: PBField
+	func get_f_float() -> float:
 		return _f_float.value
-	func clear_f_float():
+	func clear_f_float() -> void:
 		_f_float.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT]
-	func set_f_float(value):
+	func set_f_float(value : float) -> void:
 		_f_float.value = value
 	
-	var _f_int32
-	func get_f_int32():
+	var _f_int32: PBField
+	func get_f_int32() -> int:
 		return _f_int32.value
-	func clear_f_int32():
+	func clear_f_int32() -> void:
 		_f_int32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-	func set_f_int32(value):
+	func set_f_int32(value : int) -> void:
 		_f_int32.value = value
 	
-	var _f_int64
-	func get_f_int64():
+	var _f_int64: PBField
+	func get_f_int64() -> int:
 		return _f_int64.value
-	func clear_f_int64():
+	func clear_f_int64() -> void:
 		_f_int64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT64]
-	func set_f_int64(value):
+	func set_f_int64(value : int) -> void:
 		_f_int64.value = value
 	
-	var _f_uint32
-	func get_f_uint32():
+	var _f_uint32: PBField
+	func get_f_uint32() -> int:
 		return _f_uint32.value
-	func clear_f_uint32():
+	func clear_f_uint32() -> void:
 		_f_uint32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.UINT32]
-	func set_f_uint32(value):
+	func set_f_uint32(value : int) -> void:
 		_f_uint32.value = value
 	
-	var _f_uint64
-	func get_f_uint64():
+	var _f_uint64: PBField
+	func get_f_uint64() -> int:
 		return _f_uint64.value
-	func clear_f_uint64():
+	func clear_f_uint64() -> void:
 		_f_uint64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.UINT64]
-	func set_f_uint64(value):
+	func set_f_uint64(value : int) -> void:
 		_f_uint64.value = value
 	
-	var _f_sint32
-	func get_f_sint32():
+	var _f_sint32: PBField
+	func get_f_sint32() -> int:
 		return _f_sint32.value
-	func clear_f_sint32():
+	func clear_f_sint32() -> void:
 		_f_sint32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.SINT32]
-	func set_f_sint32(value):
+	func set_f_sint32(value : int) -> void:
 		_f_sint32.value = value
 	
-	var _f_sint64
-	func get_f_sint64():
+	var _f_sint64: PBField
+	func get_f_sint64() -> int:
 		return _f_sint64.value
-	func clear_f_sint64():
+	func clear_f_sint64() -> void:
 		_f_sint64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.SINT64]
-	func set_f_sint64(value):
+	func set_f_sint64(value : int) -> void:
 		_f_sint64.value = value
 	
-	var _f_fixed32
-	func get_f_fixed32():
+	var _f_fixed32: PBField
+	func get_f_fixed32() -> int:
 		return _f_fixed32.value
-	func clear_f_fixed32():
+	func clear_f_fixed32() -> void:
 		_f_fixed32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED32]
-	func set_f_fixed32(value):
+	func set_f_fixed32(value : int) -> void:
 		_f_fixed32.value = value
 	
-	var _f_fixed64
-	func get_f_fixed64():
+	var _f_fixed64: PBField
+	func get_f_fixed64() -> int:
 		return _f_fixed64.value
-	func clear_f_fixed64():
+	func clear_f_fixed64() -> void:
 		_f_fixed64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED64]
-	func set_f_fixed64(value):
+	func set_f_fixed64(value : int) -> void:
 		_f_fixed64.value = value
 	
-	var _f_sfixed32
-	func get_f_sfixed32():
+	var _f_sfixed32: PBField
+	func get_f_sfixed32() -> int:
 		return _f_sfixed32.value
-	func clear_f_sfixed32():
+	func clear_f_sfixed32() -> void:
 		_f_sfixed32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.SFIXED32]
-	func set_f_sfixed32(value):
+	func set_f_sfixed32(value : int) -> void:
 		_f_sfixed32.value = value
 	
-	var _f_sfixed64
-	func get_f_sfixed64():
+	var _f_sfixed64: PBField
+	func get_f_sfixed64() -> int:
 		return _f_sfixed64.value
-	func clear_f_sfixed64():
+	func clear_f_sfixed64() -> void:
 		_f_sfixed64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.SFIXED64]
-	func set_f_sfixed64(value):
+	func set_f_sfixed64(value : int) -> void:
 		_f_sfixed64.value = value
 	
-	var _f_bool
-	func get_f_bool():
+	var _f_bool: PBField
+	func get_f_bool() -> bool:
 		return _f_bool.value
-	func clear_f_bool():
+	func clear_f_bool() -> void:
 		_f_bool.value = DEFAULT_VALUES_2[PB_DATA_TYPE.BOOL]
-	func set_f_bool(value):
+	func set_f_bool(value : bool) -> void:
 		_f_bool.value = value
 	
-	var _f_string
-	func get_f_string():
+	var _f_string: PBField
+	func get_f_string() -> String:
 		return _f_string.value
-	func clear_f_string():
+	func clear_f_string() -> void:
 		_f_string.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
-	func set_f_string(value):
+	func set_f_string(value : String) -> void:
 		_f_string.value = value
 	
-	var _f_bytes
-	func get_f_bytes():
+	var _f_bytes: PBField
+	func get_f_bytes() -> PoolByteArray:
 		return _f_bytes.value
-	func clear_f_bytes():
+	func clear_f_bytes() -> void:
 		_f_bytes.value = DEFAULT_VALUES_2[PB_DATA_TYPE.BYTES]
-	func set_f_bytes(value):
+	func set_f_bytes(value : PoolByteArray) -> void:
 		_f_bytes.value = value
 	
-	var _f_map
+	var _f_map: PBField
 	func get_raw_f_map():
 		return _f_map.value
 	func get_f_map():
 		return PBPacker.construct_map(_f_map.value)
 	func clear_f_map():
 		_f_map.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MAP]
-	func add_empty_f_map():
+	func add_empty_f_map() -> int:
 		var element = Test1.map_type_f_map.new()
 		_f_map.value.append(element)
 		return element
-	func add_f_map(a_key, a_value):
+	func add_f_map(a_key, a_value) -> void:
 		var idx = -1
 		for i in range(_f_map.value.size()):
 			if _f_map.value[i].get_key() == a_key:
@@ -1118,332 +1127,332 @@ class Test1:
 		else:
 			_f_map.value.append(element)
 	
-	var _f_oneof_f1
-	func has_f_oneof_f1():
+	var _f_oneof_f1: PBField
+	func has_f_oneof_f1() -> bool:
 		if data[17].state == PB_SERVICE_STATE.FILLED:
 			return true
 		return false
-	func get_f_oneof_f1():
+	func get_f_oneof_f1() -> String:
 		return _f_oneof_f1.value
-	func clear_f_oneof_f1():
+	func clear_f_oneof_f1() -> void:
 		_f_oneof_f1.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
-	func set_f_oneof_f1(value):
+	func set_f_oneof_f1(value : String) -> void:
 		_f_oneof_f2.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
 		_f_oneof_f1.value = value
 	
-	var _f_oneof_f2
-	func has_f_oneof_f2():
+	var _f_oneof_f2: PBField
+	func has_f_oneof_f2() -> bool:
 		if data[18].state == PB_SERVICE_STATE.FILLED:
 			return true
 		return false
-	func get_f_oneof_f2():
+	func get_f_oneof_f2() -> int:
 		return _f_oneof_f2.value
-	func clear_f_oneof_f2():
+	func clear_f_oneof_f2() -> void:
 		_f_oneof_f2.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-	func set_f_oneof_f2(value):
+	func set_f_oneof_f2(value : int) -> void:
 		_f_oneof_f1.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
 		_f_oneof_f2.value = value
 	
-	var _f_empty_out
-	func get_f_empty_out():
+	var _f_empty_out: PBField
+	func get_f_empty_out() -> Test0:
 		return _f_empty_out.value
-	func clear_f_empty_out():
+	func clear_f_empty_out() -> void:
 		_f_empty_out.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func new_f_empty_out():
+	func new_f_empty_out() -> Test0:
 		_f_empty_out.value = Test0.new()
 		return _f_empty_out.value
 	
-	var _f_enum_out
+	var _f_enum_out: PBField
 	func get_f_enum_out():
 		return _f_enum_out.value
-	func clear_f_enum_out():
+	func clear_f_enum_out() -> void:
 		_f_enum_out.value = DEFAULT_VALUES_2[PB_DATA_TYPE.ENUM]
-	func set_f_enum_out(value):
+	func set_f_enum_out(value) -> void:
 		_f_enum_out.value = value
 	
-	var _f_empty_inner
-	func get_f_empty_inner():
+	var _f_empty_inner: PBField
+	func get_f_empty_inner() -> Test2.TestInner2:
 		return _f_empty_inner.value
-	func clear_f_empty_inner():
+	func clear_f_empty_inner() -> void:
 		_f_empty_inner.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func new_f_empty_inner():
+	func new_f_empty_inner() -> Test2.TestInner2:
 		_f_empty_inner.value = Test2.TestInner2.new()
 		return _f_empty_inner.value
 	
-	var _f_enum_inner
+	var _f_enum_inner: PBField
 	func get_f_enum_inner():
 		return _f_enum_inner.value
-	func clear_f_enum_inner():
+	func clear_f_enum_inner() -> void:
 		_f_enum_inner.value = DEFAULT_VALUES_2[PB_DATA_TYPE.ENUM]
-	func set_f_enum_inner(value):
+	func set_f_enum_inner(value) -> void:
 		_f_enum_inner.value = value
 	
-	var _rf_double
-	func get_rf_double():
+	var _rf_double: PBField
+	func get_rf_double() -> Array:
 		return _rf_double.value
-	func clear_rf_double():
+	func clear_rf_double() -> void:
 		_rf_double.value = DEFAULT_VALUES_2[PB_DATA_TYPE.DOUBLE]
-	func add_rf_double(value):
+	func add_rf_double(value : float) -> void:
 		_rf_double.value.append(value)
 	
-	var _rf_float
-	func get_rf_float():
+	var _rf_float: PBField
+	func get_rf_float() -> Array:
 		return _rf_float.value
-	func clear_rf_float():
+	func clear_rf_float() -> void:
 		_rf_float.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT]
-	func add_rf_float(value):
+	func add_rf_float(value : float) -> void:
 		_rf_float.value.append(value)
 	
-	var _rf_int32
-	func get_rf_int32():
+	var _rf_int32: PBField
+	func get_rf_int32() -> Array:
 		return _rf_int32.value
-	func clear_rf_int32():
+	func clear_rf_int32() -> void:
 		_rf_int32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-	func add_rf_int32(value):
+	func add_rf_int32(value : int) -> void:
 		_rf_int32.value.append(value)
 	
-	var _rf_int64
-	func get_rf_int64():
+	var _rf_int64: PBField
+	func get_rf_int64() -> Array:
 		return _rf_int64.value
-	func clear_rf_int64():
+	func clear_rf_int64() -> void:
 		_rf_int64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT64]
-	func add_rf_int64(value):
+	func add_rf_int64(value : int) -> void:
 		_rf_int64.value.append(value)
 	
-	var _rf_uint32
-	func get_rf_uint32():
+	var _rf_uint32: PBField
+	func get_rf_uint32() -> Array:
 		return _rf_uint32.value
-	func clear_rf_uint32():
+	func clear_rf_uint32() -> void:
 		_rf_uint32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.UINT32]
-	func add_rf_uint32(value):
+	func add_rf_uint32(value : int) -> void:
 		_rf_uint32.value.append(value)
 	
-	var _rf_uint64
-	func get_rf_uint64():
+	var _rf_uint64: PBField
+	func get_rf_uint64() -> Array:
 		return _rf_uint64.value
-	func clear_rf_uint64():
+	func clear_rf_uint64() -> void:
 		_rf_uint64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.UINT64]
-	func add_rf_uint64(value):
+	func add_rf_uint64(value : int) -> void:
 		_rf_uint64.value.append(value)
 	
-	var _rf_sint32
-	func get_rf_sint32():
+	var _rf_sint32: PBField
+	func get_rf_sint32() -> Array:
 		return _rf_sint32.value
-	func clear_rf_sint32():
+	func clear_rf_sint32() -> void:
 		_rf_sint32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.SINT32]
-	func add_rf_sint32(value):
+	func add_rf_sint32(value : int) -> void:
 		_rf_sint32.value.append(value)
 	
-	var _rf_sint64
-	func get_rf_sint64():
+	var _rf_sint64: PBField
+	func get_rf_sint64() -> Array:
 		return _rf_sint64.value
-	func clear_rf_sint64():
+	func clear_rf_sint64() -> void:
 		_rf_sint64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.SINT64]
-	func add_rf_sint64(value):
+	func add_rf_sint64(value : int) -> void:
 		_rf_sint64.value.append(value)
 	
-	var _rf_fixed32
-	func get_rf_fixed32():
+	var _rf_fixed32: PBField
+	func get_rf_fixed32() -> Array:
 		return _rf_fixed32.value
-	func clear_rf_fixed32():
+	func clear_rf_fixed32() -> void:
 		_rf_fixed32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED32]
-	func add_rf_fixed32(value):
+	func add_rf_fixed32(value : int) -> void:
 		_rf_fixed32.value.append(value)
 	
-	var _rf_fixed64
-	func get_rf_fixed64():
+	var _rf_fixed64: PBField
+	func get_rf_fixed64() -> Array:
 		return _rf_fixed64.value
-	func clear_rf_fixed64():
+	func clear_rf_fixed64() -> void:
 		_rf_fixed64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED64]
-	func add_rf_fixed64(value):
+	func add_rf_fixed64(value : int) -> void:
 		_rf_fixed64.value.append(value)
 	
-	var _rf_sfixed32
-	func get_rf_sfixed32():
+	var _rf_sfixed32: PBField
+	func get_rf_sfixed32() -> Array:
 		return _rf_sfixed32.value
-	func clear_rf_sfixed32():
+	func clear_rf_sfixed32() -> void:
 		_rf_sfixed32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.SFIXED32]
-	func add_rf_sfixed32(value):
+	func add_rf_sfixed32(value : int) -> void:
 		_rf_sfixed32.value.append(value)
 	
-	var _rf_sfixed64
-	func get_rf_sfixed64():
+	var _rf_sfixed64: PBField
+	func get_rf_sfixed64() -> Array:
 		return _rf_sfixed64.value
-	func clear_rf_sfixed64():
+	func clear_rf_sfixed64() -> void:
 		_rf_sfixed64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.SFIXED64]
-	func add_rf_sfixed64(value):
+	func add_rf_sfixed64(value : int) -> void:
 		_rf_sfixed64.value.append(value)
 	
-	var _rf_bool
-	func get_rf_bool():
+	var _rf_bool: PBField
+	func get_rf_bool() -> Array:
 		return _rf_bool.value
-	func clear_rf_bool():
+	func clear_rf_bool() -> void:
 		_rf_bool.value = DEFAULT_VALUES_2[PB_DATA_TYPE.BOOL]
-	func add_rf_bool(value):
+	func add_rf_bool(value : bool) -> void:
 		_rf_bool.value.append(value)
 	
-	var _rf_string
-	func get_rf_string():
+	var _rf_string: PBField
+	func get_rf_string() -> Array:
 		return _rf_string.value
-	func clear_rf_string():
+	func clear_rf_string() -> void:
 		_rf_string.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
-	func add_rf_string(value):
+	func add_rf_string(value : String) -> void:
 		_rf_string.value.append(value)
 	
-	var _rf_bytes
-	func get_rf_bytes():
+	var _rf_bytes: PBField
+	func get_rf_bytes() -> Array:
 		return _rf_bytes.value
-	func clear_rf_bytes():
+	func clear_rf_bytes() -> void:
 		_rf_bytes.value = DEFAULT_VALUES_2[PB_DATA_TYPE.BYTES]
-	func add_rf_bytes(value):
+	func add_rf_bytes(value : PoolByteArray) -> void:
 		_rf_bytes.value.append(value)
 	
-	var _rf_empty_out
-	func get_rf_empty_out():
+	var _rf_empty_out: PBField
+	func get_rf_empty_out() -> Array:
 		return _rf_empty_out.value
-	func clear_rf_empty_out():
+	func clear_rf_empty_out() -> void:
 		_rf_empty_out.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func add_rf_empty_out():
+	func add_rf_empty_out() -> Test0:
 		var element = Test0.new()
 		_rf_empty_out.value.append(element)
 		return element
 	
-	var _rf_enum_out
-	func get_rf_enum_out():
+	var _rf_enum_out: PBField
+	func get_rf_enum_out() -> Array:
 		return _rf_enum_out.value
-	func clear_rf_enum_out():
+	func clear_rf_enum_out() -> void:
 		_rf_enum_out.value = DEFAULT_VALUES_2[PB_DATA_TYPE.ENUM]
-	func add_rf_enum_out(value):
+	func add_rf_enum_out(value) -> void:
 		_rf_enum_out.value.append(value)
 	
-	var _rf_empty_inner
-	func get_rf_empty_inner():
+	var _rf_empty_inner: PBField
+	func get_rf_empty_inner() -> Array:
 		return _rf_empty_inner.value
-	func clear_rf_empty_inner():
+	func clear_rf_empty_inner() -> void:
 		_rf_empty_inner.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func add_rf_empty_inner():
+	func add_rf_empty_inner() -> Test2.TestInner2:
 		var element = Test2.TestInner2.new()
 		_rf_empty_inner.value.append(element)
 		return element
 	
-	var _rf_enum_inner
-	func get_rf_enum_inner():
+	var _rf_enum_inner: PBField
+	func get_rf_enum_inner() -> Array:
 		return _rf_enum_inner.value
-	func clear_rf_enum_inner():
+	func clear_rf_enum_inner() -> void:
 		_rf_enum_inner.value = DEFAULT_VALUES_2[PB_DATA_TYPE.ENUM]
-	func add_rf_enum_inner(value):
+	func add_rf_enum_inner(value) -> void:
 		_rf_enum_inner.value.append(value)
 	
-	var _rfu_double
-	func get_rfu_double():
+	var _rfu_double: PBField
+	func get_rfu_double() -> Array:
 		return _rfu_double.value
-	func clear_rfu_double():
+	func clear_rfu_double() -> void:
 		_rfu_double.value = DEFAULT_VALUES_2[PB_DATA_TYPE.DOUBLE]
-	func add_rfu_double(value):
+	func add_rfu_double(value : float) -> void:
 		_rfu_double.value.append(value)
 	
-	var _rfu_float
-	func get_rfu_float():
+	var _rfu_float: PBField
+	func get_rfu_float() -> Array:
 		return _rfu_float.value
-	func clear_rfu_float():
+	func clear_rfu_float() -> void:
 		_rfu_float.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT]
-	func add_rfu_float(value):
+	func add_rfu_float(value : float) -> void:
 		_rfu_float.value.append(value)
 	
-	var _rfu_int32
-	func get_rfu_int32():
+	var _rfu_int32: PBField
+	func get_rfu_int32() -> Array:
 		return _rfu_int32.value
-	func clear_rfu_int32():
+	func clear_rfu_int32() -> void:
 		_rfu_int32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-	func add_rfu_int32(value):
+	func add_rfu_int32(value : int) -> void:
 		_rfu_int32.value.append(value)
 	
-	var _rfu_int64
-	func get_rfu_int64():
+	var _rfu_int64: PBField
+	func get_rfu_int64() -> Array:
 		return _rfu_int64.value
-	func clear_rfu_int64():
+	func clear_rfu_int64() -> void:
 		_rfu_int64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT64]
-	func add_rfu_int64(value):
+	func add_rfu_int64(value : int) -> void:
 		_rfu_int64.value.append(value)
 	
-	var _rfu_uint32
-	func get_rfu_uint32():
+	var _rfu_uint32: PBField
+	func get_rfu_uint32() -> Array:
 		return _rfu_uint32.value
-	func clear_rfu_uint32():
+	func clear_rfu_uint32() -> void:
 		_rfu_uint32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.UINT32]
-	func add_rfu_uint32(value):
+	func add_rfu_uint32(value : int) -> void:
 		_rfu_uint32.value.append(value)
 	
-	var _rfu_uint64
-	func get_rfu_uint64():
+	var _rfu_uint64: PBField
+	func get_rfu_uint64() -> Array:
 		return _rfu_uint64.value
-	func clear_rfu_uint64():
+	func clear_rfu_uint64() -> void:
 		_rfu_uint64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.UINT64]
-	func add_rfu_uint64(value):
+	func add_rfu_uint64(value : int) -> void:
 		_rfu_uint64.value.append(value)
 	
-	var _rfu_sint32
-	func get_rfu_sint32():
+	var _rfu_sint32: PBField
+	func get_rfu_sint32() -> Array:
 		return _rfu_sint32.value
-	func clear_rfu_sint32():
+	func clear_rfu_sint32() -> void:
 		_rfu_sint32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.SINT32]
-	func add_rfu_sint32(value):
+	func add_rfu_sint32(value : int) -> void:
 		_rfu_sint32.value.append(value)
 	
-	var _rfu_sint64
-	func get_rfu_sint64():
+	var _rfu_sint64: PBField
+	func get_rfu_sint64() -> Array:
 		return _rfu_sint64.value
-	func clear_rfu_sint64():
+	func clear_rfu_sint64() -> void:
 		_rfu_sint64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.SINT64]
-	func add_rfu_sint64(value):
+	func add_rfu_sint64(value : int) -> void:
 		_rfu_sint64.value.append(value)
 	
-	var _rfu_fixed32
-	func get_rfu_fixed32():
+	var _rfu_fixed32: PBField
+	func get_rfu_fixed32() -> Array:
 		return _rfu_fixed32.value
-	func clear_rfu_fixed32():
+	func clear_rfu_fixed32() -> void:
 		_rfu_fixed32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED32]
-	func add_rfu_fixed32(value):
+	func add_rfu_fixed32(value : int) -> void:
 		_rfu_fixed32.value.append(value)
 	
-	var _rfu_fixed64
-	func get_rfu_fixed64():
+	var _rfu_fixed64: PBField
+	func get_rfu_fixed64() -> Array:
 		return _rfu_fixed64.value
-	func clear_rfu_fixed64():
+	func clear_rfu_fixed64() -> void:
 		_rfu_fixed64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED64]
-	func add_rfu_fixed64(value):
+	func add_rfu_fixed64(value : int) -> void:
 		_rfu_fixed64.value.append(value)
 	
-	var _rfu_sfixed32
-	func get_rfu_sfixed32():
+	var _rfu_sfixed32: PBField
+	func get_rfu_sfixed32() -> Array:
 		return _rfu_sfixed32.value
-	func clear_rfu_sfixed32():
+	func clear_rfu_sfixed32() -> void:
 		_rfu_sfixed32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.SFIXED32]
-	func add_rfu_sfixed32(value):
+	func add_rfu_sfixed32(value : int) -> void:
 		_rfu_sfixed32.value.append(value)
 	
-	var _rfu_sfixed64
-	func get_rfu_sfixed64():
+	var _rfu_sfixed64: PBField
+	func get_rfu_sfixed64() -> Array:
 		return _rfu_sfixed64.value
-	func clear_rfu_sfixed64():
+	func clear_rfu_sfixed64() -> void:
 		_rfu_sfixed64.value = DEFAULT_VALUES_2[PB_DATA_TYPE.SFIXED64]
-	func add_rfu_sfixed64(value):
+	func add_rfu_sfixed64(value : int) -> void:
 		_rfu_sfixed64.value.append(value)
 	
-	var _rfu_bool
-	func get_rfu_bool():
+	var _rfu_bool: PBField
+	func get_rfu_bool() -> Array:
 		return _rfu_bool.value
-	func clear_rfu_bool():
+	func clear_rfu_bool() -> void:
 		_rfu_bool.value = DEFAULT_VALUES_2[PB_DATA_TYPE.BOOL]
-	func add_rfu_bool(value):
+	func add_rfu_bool(value : bool) -> void:
 		_rfu_bool.value.append(value)
 	
-	var _rf_inner
-	func get_rf_inner():
+	var _rf_inner: PBField
+	func get_rf_inner() -> Array:
 		return _rf_inner.value
-	func clear_rf_inner():
+	func clear_rf_inner() -> void:
 		_rf_inner.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func add_rf_inner():
+	func add_rf_inner() -> Test2.TestInner3.TestInner3_2:
 		var element = Test2.TestInner3.TestInner3_2.new()
 		_rf_inner.value.append(element)
 		return element
@@ -1452,38 +1461,41 @@ class Test1:
 		func _init():
 			var service
 			
-			_key = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.REQUIRED, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
+			_key = PBField.new("key", PB_DATA_TYPE.INT32, PB_RULE.REQUIRED, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
 			service = PBServiceField.new()
 			service.field = _key
 			data[_key.tag] = service
 			
-			_value = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.REQUIRED, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
+			_value = PBField.new("value", PB_DATA_TYPE.INT32, PB_RULE.REQUIRED, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
 			service = PBServiceField.new()
 			service.field = _value
 			data[_value.tag] = service
 			
 		var data = {}
 		
-		var _key
-		func get_key():
+		var _key: PBField
+		func get_key() -> int:
 			return _key.value
-		func clear_key():
+		func clear_key() -> void:
 			_key.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-		func set_key(value):
+		func set_key(value : int) -> void:
 			_key.value = value
 		
-		var _value
-		func get_value():
+		var _value: PBField
+		func get_value() -> int:
 			return _value.value
-		func clear_value():
+		func clear_value() -> void:
 			_value.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-		func set_value(value):
+		func set_value(value : int) -> void:
 			_value.value = value
 		
-		func to_bytes():
+		func to_string() -> String:
+			return PBPacker.message_to_string(data)
+			
+		func to_bytes() -> PoolByteArray:
 			return PBPacker.pack_message(data)
 			
-		func from_bytes(bytes, offset = 0, limit = -1):
+		func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 			var cur_limit = bytes.size()
 			if limit != -1:
 				cur_limit = limit
@@ -1498,10 +1510,13 @@ class Test1:
 				return PB_ERR.PARSE_INCOMPLETE
 			return result
 		
-	func to_bytes():
+	func to_string() -> String:
+		return PBPacker.message_to_string(data)
+		
+	func to_bytes() -> PoolByteArray:
 		return PBPacker.pack_message(data)
 		
-	func from_bytes(bytes, offset = 0, limit = -1):
+	func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 		var cur_limit = bytes.size()
 		if limit != -1:
 			cur_limit = limit
@@ -1520,40 +1535,40 @@ class Test2:
 	func _init():
 		var service
 		
-		_f1 = PBField.new(PB_DATA_TYPE.STRING, PB_RULE.REPEATED, 1, false, [])
+		_f1 = PBField.new("f1", PB_DATA_TYPE.STRING, PB_RULE.REPEATED, 1, false, [])
 		service = PBServiceField.new()
 		service.field = _f1
 		data[_f1.tag] = service
 		
-		_f2 = PBField.new(PB_DATA_TYPE.FIXED64, PB_RULE.OPTIONAL, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED64])
+		_f2 = PBField.new("f2", PB_DATA_TYPE.FIXED64, PB_RULE.OPTIONAL, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED64])
 		service = PBServiceField.new()
 		service.field = _f2
 		data[_f2.tag] = service
 		
-		_f3 = PBField.new(PB_DATA_TYPE.STRING, PB_RULE.OPTIONAL, 3, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
+		_f3 = PBField.new("f3", PB_DATA_TYPE.STRING, PB_RULE.OPTIONAL, 3, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
 		service = PBServiceField.new()
 		service.field = _f3
 		data[_f3.tag] = service
 		
-		_f4 = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 4, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+		_f4 = PBField.new("f4", PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 4, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 		service = PBServiceField.new()
 		service.field = _f4
 		service.func_ref = funcref(self, "new_f4")
 		data[_f4.tag] = service
 		
-		_f5 = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 5, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+		_f5 = PBField.new("f5", PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 5, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 		service = PBServiceField.new()
 		service.field = _f5
 		service.func_ref = funcref(self, "new_f5")
 		data[_f5.tag] = service
 		
-		_f6 = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 6, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+		_f6 = PBField.new("f6", PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 6, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 		service = PBServiceField.new()
 		service.field = _f6
 		service.func_ref = funcref(self, "new_f6")
 		data[_f6.tag] = service
 		
-		_f7 = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 7, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+		_f7 = PBField.new("f7", PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 7, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 		service = PBServiceField.new()
 		service.field = _f7
 		service.func_ref = funcref(self, "new_f7")
@@ -1561,73 +1576,73 @@ class Test2:
 		
 	var data = {}
 	
-	var _f1
-	func get_f1():
+	var _f1: PBField
+	func get_f1() -> Array:
 		return _f1.value
-	func clear_f1():
+	func clear_f1() -> void:
 		_f1.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
-	func add_f1(value):
+	func add_f1(value : String) -> void:
 		_f1.value.append(value)
 	
-	var _f2
-	func get_f2():
+	var _f2: PBField
+	func get_f2() -> int:
 		return _f2.value
-	func clear_f2():
+	func clear_f2() -> void:
 		_f2.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FIXED64]
-	func set_f2(value):
+	func set_f2(value : int) -> void:
 		_f2.value = value
 	
-	var _f3
-	func has_f3():
+	var _f3: PBField
+	func has_f3() -> bool:
 		if data[3].state == PB_SERVICE_STATE.FILLED:
 			return true
 		return false
-	func get_f3():
+	func get_f3() -> String:
 		return _f3.value
-	func clear_f3():
+	func clear_f3() -> void:
 		_f3.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
-	func set_f3(value):
+	func set_f3(value : String) -> void:
 		_f4.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
 		_f3.value = value
 	
-	var _f4
-	func has_f4():
+	var _f4: PBField
+	func has_f4() -> bool:
 		if data[4].state == PB_SERVICE_STATE.FILLED:
 			return true
 		return false
-	func get_f4():
+	func get_f4() -> Test2.TestInner3:
 		return _f4.value
-	func clear_f4():
+	func clear_f4() -> void:
 		_f4.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func new_f4():
+	func new_f4() -> Test2.TestInner3:
 		_f3.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
 		_f4.value = Test2.TestInner3.new()
 		return _f4.value
 	
-	var _f5
-	func get_f5():
+	var _f5: PBField
+	func get_f5() -> Test2.TestInner2:
 		return _f5.value
-	func clear_f5():
+	func clear_f5() -> void:
 		_f5.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func new_f5():
+	func new_f5() -> Test2.TestInner2:
 		_f5.value = Test2.TestInner2.new()
 		return _f5.value
 	
-	var _f6
-	func get_f6():
+	var _f6: PBField
+	func get_f6() -> Test2.TestInner3:
 		return _f6.value
-	func clear_f6():
+	func clear_f6() -> void:
 		_f6.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func new_f6():
+	func new_f6() -> Test2.TestInner3:
 		_f6.value = Test2.TestInner3.new()
 		return _f6.value
 	
-	var _f7
-	func get_f7():
+	var _f7: PBField
+	func get_f7() -> Test2.TestInner1:
 		return _f7.value
-	func clear_f7():
+	func clear_f7() -> void:
 		_f7.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func new_f7():
+	func new_f7() -> Test2.TestInner1:
 		_f7.value = Test2.TestInner1.new()
 		return _f7.value
 	
@@ -1642,51 +1657,54 @@ class Test2:
 		func _init():
 			var service
 			
-			_f1 = PBField.new(PB_DATA_TYPE.DOUBLE, PB_RULE.REPEATED, 1, false, [])
+			_f1 = PBField.new("f1", PB_DATA_TYPE.DOUBLE, PB_RULE.REPEATED, 1, false, [])
 			service = PBServiceField.new()
 			service.field = _f1
 			data[_f1.tag] = service
 			
-			_f2 = PBField.new(PB_DATA_TYPE.FLOAT, PB_RULE.OPTIONAL, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT])
+			_f2 = PBField.new("f2", PB_DATA_TYPE.FLOAT, PB_RULE.OPTIONAL, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT])
 			service = PBServiceField.new()
 			service.field = _f2
 			data[_f2.tag] = service
 			
-			_f3 = PBField.new(PB_DATA_TYPE.STRING, PB_RULE.OPTIONAL, 3, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
+			_f3 = PBField.new("f3", PB_DATA_TYPE.STRING, PB_RULE.OPTIONAL, 3, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
 			service = PBServiceField.new()
 			service.field = _f3
 			data[_f3.tag] = service
 			
 		var data = {}
 		
-		var _f1
-		func get_f1():
+		var _f1: PBField
+		func get_f1() -> Array:
 			return _f1.value
-		func clear_f1():
+		func clear_f1() -> void:
 			_f1.value = DEFAULT_VALUES_2[PB_DATA_TYPE.DOUBLE]
-		func add_f1(value):
+		func add_f1(value : float) -> void:
 			_f1.value.append(value)
 		
-		var _f2
-		func get_f2():
+		var _f2: PBField
+		func get_f2() -> float:
 			return _f2.value
-		func clear_f2():
+		func clear_f2() -> void:
 			_f2.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT]
-		func set_f2(value):
+		func set_f2(value : float) -> void:
 			_f2.value = value
 		
-		var _f3
-		func get_f3():
+		var _f3: PBField
+		func get_f3() -> String:
 			return _f3.value
-		func clear_f3():
+		func clear_f3() -> void:
 			_f3.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
-		func set_f3(value):
+		func set_f3(value : String) -> void:
 			_f3.value = value
 		
-		func to_bytes():
+		func to_string() -> String:
+			return PBPacker.message_to_string(data)
+			
+		func to_bytes() -> PoolByteArray:
 			return PBPacker.pack_message(data)
 			
-		func from_bytes(bytes, offset = 0, limit = -1):
+		func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 			var cur_limit = bytes.size()
 			if limit != -1:
 				cur_limit = limit
@@ -1707,10 +1725,13 @@ class Test2:
 			
 		var data = {}
 		
-		func to_bytes():
+		func to_string() -> String:
+			return PBPacker.message_to_string(data)
+			
+		func to_bytes() -> PoolByteArray:
 			return PBPacker.pack_message(data)
 			
-		func from_bytes(bytes, offset = 0, limit = -1):
+		func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 			var cur_limit = bytes.size()
 			if limit != -1:
 				cur_limit = limit
@@ -1729,18 +1750,18 @@ class Test2:
 		func _init():
 			var service
 			
-			_f1 = PBField.new(PB_DATA_TYPE.MAP, PB_RULE.REPEATED, 1, false, [])
+			_f1 = PBField.new("f1", PB_DATA_TYPE.MAP, PB_RULE.REPEATED, 1, false, [])
 			service = PBServiceField.new()
 			service.field = _f1
 			service.func_ref = funcref(self, "add_empty_f1")
 			data[_f1.tag] = service
 			
-			_f2 = PBField.new(PB_DATA_TYPE.ENUM, PB_RULE.OPTIONAL, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.ENUM])
+			_f2 = PBField.new("f2", PB_DATA_TYPE.ENUM, PB_RULE.OPTIONAL, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.ENUM])
 			service = PBServiceField.new()
 			service.field = _f2
 			data[_f2.tag] = service
 			
-			_f3 = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 3, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+			_f3 = PBField.new("f3", PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 3, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 			service = PBServiceField.new()
 			service.field = _f3
 			service.func_ref = funcref(self, "new_f3")
@@ -1748,18 +1769,18 @@ class Test2:
 			
 		var data = {}
 		
-		var _f1
+		var _f1: PBField
 		func get_raw_f1():
 			return _f1.value
 		func get_f1():
 			return PBPacker.construct_map(_f1.value)
 		func clear_f1():
 			_f1.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MAP]
-		func add_empty_f1():
+		func add_empty_f1() -> Test2.TestInner3.map_type_f1:
 			var element = Test2.TestInner3.map_type_f1.new()
 			_f1.value.append(element)
 			return element
-		func add_f1(a_key):
+		func add_f1(a_key) -> Test2.TestInner3.map_type_f1:
 			var idx = -1
 			for i in range(_f1.value.size()):
 				if _f1.value[i].get_key() == a_key:
@@ -1773,20 +1794,20 @@ class Test2:
 				_f1.value.append(element)
 			return element.new_value()
 		
-		var _f2
+		var _f2: PBField
 		func get_f2():
 			return _f2.value
-		func clear_f2():
+		func clear_f2() -> void:
 			_f2.value = DEFAULT_VALUES_2[PB_DATA_TYPE.ENUM]
-		func set_f2(value):
+		func set_f2(value) -> void:
 			_f2.value = value
 		
-		var _f3
-		func get_f3():
+		var _f3: PBField
+		func get_f3() -> Test2.TestInner3.TestInner3_1:
 			return _f3.value
-		func clear_f3():
+		func clear_f3() -> void:
 			_f3.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-		func new_f3():
+		func new_f3() -> Test2.TestInner3.TestInner3_1:
 			_f3.value = Test2.TestInner3.TestInner3_1.new()
 			return _f3.value
 		
@@ -1796,10 +1817,13 @@ class Test2:
 				
 			var data = {}
 			
-			func to_bytes():
+			func to_string() -> String:
+				return PBPacker.message_to_string(data)
+				
+			func to_bytes() -> PoolByteArray:
 				return PBPacker.pack_message(data)
 				
-			func from_bytes(bytes, offset = 0, limit = -1):
+			func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 				var cur_limit = bytes.size()
 				if limit != -1:
 					cur_limit = limit
@@ -1818,38 +1842,41 @@ class Test2:
 			func _init():
 				var service
 				
-				_f1 = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.OPTIONAL, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
+				_f1 = PBField.new("f1", PB_DATA_TYPE.INT32, PB_RULE.OPTIONAL, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
 				service = PBServiceField.new()
 				service.field = _f1
 				data[_f1.tag] = service
 				
-				_f2 = PBField.new(PB_DATA_TYPE.UINT64, PB_RULE.OPTIONAL, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.UINT64])
+				_f2 = PBField.new("f2", PB_DATA_TYPE.UINT64, PB_RULE.OPTIONAL, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.UINT64])
 				service = PBServiceField.new()
 				service.field = _f2
 				data[_f2.tag] = service
 				
 			var data = {}
 			
-			var _f1
-			func get_f1():
+			var _f1: PBField
+			func get_f1() -> int:
 				return _f1.value
-			func clear_f1():
+			func clear_f1() -> void:
 				_f1.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-			func set_f1(value):
+			func set_f1(value : int) -> void:
 				_f1.value = value
 			
-			var _f2
-			func get_f2():
+			var _f2: PBField
+			func get_f2() -> int:
 				return _f2.value
-			func clear_f2():
+			func clear_f2() -> void:
 				_f2.value = DEFAULT_VALUES_2[PB_DATA_TYPE.UINT64]
-			func set_f2(value):
+			func set_f2(value : int) -> void:
 				_f2.value = value
 			
-			func to_bytes():
+			func to_string() -> String:
+				return PBPacker.message_to_string(data)
+				
+			func to_bytes() -> PoolByteArray:
 				return PBPacker.pack_message(data)
 				
-			func from_bytes(bytes, offset = 0, limit = -1):
+			func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 				var cur_limit = bytes.size()
 				if limit != -1:
 					cur_limit = limit
@@ -1868,12 +1895,12 @@ class Test2:
 			func _init():
 				var service
 				
-				_key = PBField.new(PB_DATA_TYPE.STRING, PB_RULE.REQUIRED, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
+				_key = PBField.new("key", PB_DATA_TYPE.STRING, PB_RULE.REQUIRED, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
 				service = PBServiceField.new()
 				service.field = _key
 				data[_key.tag] = service
 				
-				_value = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.REQUIRED, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+				_value = PBField.new("value", PB_DATA_TYPE.MESSAGE, PB_RULE.REQUIRED, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 				service = PBServiceField.new()
 				service.field = _value
 				service.func_ref = funcref(self, "new_value")
@@ -1881,27 +1908,30 @@ class Test2:
 				
 			var data = {}
 			
-			var _key
-			func get_key():
+			var _key: PBField
+			func get_key() -> String:
 				return _key.value
-			func clear_key():
+			func clear_key() -> void:
 				_key.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
-			func set_key(value):
+			func set_key(value : String) -> void:
 				_key.value = value
 			
-			var _value
-			func get_value():
+			var _value: PBField
+			func get_value() -> Test2.TestInner3.TestInner3_2:
 				return _value.value
-			func clear_value():
+			func clear_value() -> void:
 				_value.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-			func new_value():
+			func new_value() -> Test2.TestInner3.TestInner3_2:
 				_value.value = Test2.TestInner3.TestInner3_2.new()
 				return _value.value
 			
-			func to_bytes():
+			func to_string() -> String:
+				return PBPacker.message_to_string(data)
+				
+			func to_bytes() -> PoolByteArray:
 				return PBPacker.pack_message(data)
 				
-			func from_bytes(bytes, offset = 0, limit = -1):
+			func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 				var cur_limit = bytes.size()
 				if limit != -1:
 					cur_limit = limit
@@ -1916,10 +1946,13 @@ class Test2:
 					return PB_ERR.PARSE_INCOMPLETE
 				return result
 			
-		func to_bytes():
+		func to_string() -> String:
+			return PBPacker.message_to_string(data)
+			
+		func to_bytes() -> PoolByteArray:
 			return PBPacker.pack_message(data)
 			
-		func from_bytes(bytes, offset = 0, limit = -1):
+		func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 			var cur_limit = bytes.size()
 			if limit != -1:
 				cur_limit = limit
@@ -1934,10 +1967,13 @@ class Test2:
 				return PB_ERR.PARSE_INCOMPLETE
 			return result
 		
-	func to_bytes():
+	func to_string() -> String:
+		return PBPacker.message_to_string(data)
+		
+	func to_bytes() -> PoolByteArray:
 		return PBPacker.pack_message(data)
 		
-	func from_bytes(bytes, offset = 0, limit = -1):
+	func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 		var cur_limit = bytes.size()
 		if limit != -1:
 			cur_limit = limit
@@ -1956,100 +1992,100 @@ class Test3:
 	func _init():
 		var service
 		
-		_f_req_int32 = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.REQUIRED, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
+		_f_req_int32 = PBField.new("f_req_int32", PB_DATA_TYPE.INT32, PB_RULE.REQUIRED, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
 		service = PBServiceField.new()
 		service.field = _f_req_int32
 		data[_f_req_int32.tag] = service
 		
-		_f_req_float = PBField.new(PB_DATA_TYPE.FLOAT, PB_RULE.REQUIRED, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT])
+		_f_req_float = PBField.new("f_req_float", PB_DATA_TYPE.FLOAT, PB_RULE.REQUIRED, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT])
 		service = PBServiceField.new()
 		service.field = _f_req_float
 		data[_f_req_float.tag] = service
 		
-		_f_req_string = PBField.new(PB_DATA_TYPE.STRING, PB_RULE.REQUIRED, 3, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
+		_f_req_string = PBField.new("f_req_string", PB_DATA_TYPE.STRING, PB_RULE.REQUIRED, 3, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
 		service = PBServiceField.new()
 		service.field = _f_req_string
 		data[_f_req_string.tag] = service
 		
-		_f_req_inner_req = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.REQUIRED, 4, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+		_f_req_inner_req = PBField.new("f_req_inner_req", PB_DATA_TYPE.MESSAGE, PB_RULE.REQUIRED, 4, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 		service = PBServiceField.new()
 		service.field = _f_req_inner_req
 		service.func_ref = funcref(self, "new_f_req_inner_req")
 		data[_f_req_inner_req.tag] = service
 		
-		_f_req_inner_opt = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.REQUIRED, 5, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+		_f_req_inner_opt = PBField.new("f_req_inner_opt", PB_DATA_TYPE.MESSAGE, PB_RULE.REQUIRED, 5, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 		service = PBServiceField.new()
 		service.field = _f_req_inner_opt
 		service.func_ref = funcref(self, "new_f_req_inner_opt")
 		data[_f_req_inner_opt.tag] = service
 		
-		_f_req_inner_rep = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.REQUIRED, 6, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+		_f_req_inner_rep = PBField.new("f_req_inner_rep", PB_DATA_TYPE.MESSAGE, PB_RULE.REQUIRED, 6, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 		service = PBServiceField.new()
 		service.field = _f_req_inner_rep
 		service.func_ref = funcref(self, "new_f_req_inner_rep")
 		data[_f_req_inner_rep.tag] = service
 		
-		_f_opt_int32 = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.OPTIONAL, 7, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
+		_f_opt_int32 = PBField.new("f_opt_int32", PB_DATA_TYPE.INT32, PB_RULE.OPTIONAL, 7, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
 		service = PBServiceField.new()
 		service.field = _f_opt_int32
 		data[_f_opt_int32.tag] = service
 		
-		_f_opt_float = PBField.new(PB_DATA_TYPE.FLOAT, PB_RULE.OPTIONAL, 8, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT])
+		_f_opt_float = PBField.new("f_opt_float", PB_DATA_TYPE.FLOAT, PB_RULE.OPTIONAL, 8, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT])
 		service = PBServiceField.new()
 		service.field = _f_opt_float
 		data[_f_opt_float.tag] = service
 		
-		_f_opt_string = PBField.new(PB_DATA_TYPE.STRING, PB_RULE.OPTIONAL, 9, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
+		_f_opt_string = PBField.new("f_opt_string", PB_DATA_TYPE.STRING, PB_RULE.OPTIONAL, 9, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
 		service = PBServiceField.new()
 		service.field = _f_opt_string
 		data[_f_opt_string.tag] = service
 		
-		_f_opt_inner_req = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 10, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+		_f_opt_inner_req = PBField.new("f_opt_inner_req", PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 10, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 		service = PBServiceField.new()
 		service.field = _f_opt_inner_req
 		service.func_ref = funcref(self, "new_f_opt_inner_req")
 		data[_f_opt_inner_req.tag] = service
 		
-		_f_opt_inner_opt = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 11, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+		_f_opt_inner_opt = PBField.new("f_opt_inner_opt", PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 11, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 		service = PBServiceField.new()
 		service.field = _f_opt_inner_opt
 		service.func_ref = funcref(self, "new_f_opt_inner_opt")
 		data[_f_opt_inner_opt.tag] = service
 		
-		_f_opt_inner_rep = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 12, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
+		_f_opt_inner_rep = PBField.new("f_opt_inner_rep", PB_DATA_TYPE.MESSAGE, PB_RULE.OPTIONAL, 12, false, DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE])
 		service = PBServiceField.new()
 		service.field = _f_opt_inner_rep
 		service.func_ref = funcref(self, "new_f_opt_inner_rep")
 		data[_f_opt_inner_rep.tag] = service
 		
-		_f_rep_int32 = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.REPEATED, 13, false, [])
+		_f_rep_int32 = PBField.new("f_rep_int32", PB_DATA_TYPE.INT32, PB_RULE.REPEATED, 13, false, [])
 		service = PBServiceField.new()
 		service.field = _f_rep_int32
 		data[_f_rep_int32.tag] = service
 		
-		_f_rep_float = PBField.new(PB_DATA_TYPE.FLOAT, PB_RULE.REPEATED, 14, false, [])
+		_f_rep_float = PBField.new("f_rep_float", PB_DATA_TYPE.FLOAT, PB_RULE.REPEATED, 14, false, [])
 		service = PBServiceField.new()
 		service.field = _f_rep_float
 		data[_f_rep_float.tag] = service
 		
-		_f_rep_string = PBField.new(PB_DATA_TYPE.STRING, PB_RULE.REPEATED, 15, false, [])
+		_f_rep_string = PBField.new("f_rep_string", PB_DATA_TYPE.STRING, PB_RULE.REPEATED, 15, false, [])
 		service = PBServiceField.new()
 		service.field = _f_rep_string
 		data[_f_rep_string.tag] = service
 		
-		_f_rep_inner_req = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.REPEATED, 16, false, [])
+		_f_rep_inner_req = PBField.new("f_rep_inner_req", PB_DATA_TYPE.MESSAGE, PB_RULE.REPEATED, 16, false, [])
 		service = PBServiceField.new()
 		service.field = _f_rep_inner_req
 		service.func_ref = funcref(self, "add_f_rep_inner_req")
 		data[_f_rep_inner_req.tag] = service
 		
-		_f_rep_inner_opt = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.REPEATED, 17, false, [])
+		_f_rep_inner_opt = PBField.new("f_rep_inner_opt", PB_DATA_TYPE.MESSAGE, PB_RULE.REPEATED, 17, false, [])
 		service = PBServiceField.new()
 		service.field = _f_rep_inner_opt
 		service.func_ref = funcref(self, "add_f_rep_inner_opt")
 		data[_f_rep_inner_opt.tag] = service
 		
-		_f_rep_inner_rep = PBField.new(PB_DATA_TYPE.MESSAGE, PB_RULE.REPEATED, 18, false, [])
+		_f_rep_inner_rep = PBField.new("f_rep_inner_rep", PB_DATA_TYPE.MESSAGE, PB_RULE.REPEATED, 18, false, [])
 		service = PBServiceField.new()
 		service.field = _f_rep_inner_rep
 		service.func_ref = funcref(self, "add_f_rep_inner_rep")
@@ -2057,158 +2093,158 @@ class Test3:
 		
 	var data = {}
 	
-	var _f_req_int32
-	func get_f_req_int32():
+	var _f_req_int32: PBField
+	func get_f_req_int32() -> int:
 		return _f_req_int32.value
-	func clear_f_req_int32():
+	func clear_f_req_int32() -> void:
 		_f_req_int32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-	func set_f_req_int32(value):
+	func set_f_req_int32(value : int) -> void:
 		_f_req_int32.value = value
 	
-	var _f_req_float
-	func get_f_req_float():
+	var _f_req_float: PBField
+	func get_f_req_float() -> float:
 		return _f_req_float.value
-	func clear_f_req_float():
+	func clear_f_req_float() -> void:
 		_f_req_float.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT]
-	func set_f_req_float(value):
+	func set_f_req_float(value : float) -> void:
 		_f_req_float.value = value
 	
-	var _f_req_string
-	func get_f_req_string():
+	var _f_req_string: PBField
+	func get_f_req_string() -> String:
 		return _f_req_string.value
-	func clear_f_req_string():
+	func clear_f_req_string() -> void:
 		_f_req_string.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
-	func set_f_req_string(value):
+	func set_f_req_string(value : String) -> void:
 		_f_req_string.value = value
 	
-	var _f_req_inner_req
-	func get_f_req_inner_req():
+	var _f_req_inner_req: PBField
+	func get_f_req_inner_req() -> Test3.InnerReq:
 		return _f_req_inner_req.value
-	func clear_f_req_inner_req():
+	func clear_f_req_inner_req() -> void:
 		_f_req_inner_req.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func new_f_req_inner_req():
+	func new_f_req_inner_req() -> Test3.InnerReq:
 		_f_req_inner_req.value = Test3.InnerReq.new()
 		return _f_req_inner_req.value
 	
-	var _f_req_inner_opt
-	func get_f_req_inner_opt():
+	var _f_req_inner_opt: PBField
+	func get_f_req_inner_opt() -> Test3.InnerOpt:
 		return _f_req_inner_opt.value
-	func clear_f_req_inner_opt():
+	func clear_f_req_inner_opt() -> void:
 		_f_req_inner_opt.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func new_f_req_inner_opt():
+	func new_f_req_inner_opt() -> Test3.InnerOpt:
 		_f_req_inner_opt.value = Test3.InnerOpt.new()
 		return _f_req_inner_opt.value
 	
-	var _f_req_inner_rep
-	func get_f_req_inner_rep():
+	var _f_req_inner_rep: PBField
+	func get_f_req_inner_rep() -> Test3.InnerRep:
 		return _f_req_inner_rep.value
-	func clear_f_req_inner_rep():
+	func clear_f_req_inner_rep() -> void:
 		_f_req_inner_rep.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func new_f_req_inner_rep():
+	func new_f_req_inner_rep() -> Test3.InnerRep:
 		_f_req_inner_rep.value = Test3.InnerRep.new()
 		return _f_req_inner_rep.value
 	
-	var _f_opt_int32
-	func get_f_opt_int32():
+	var _f_opt_int32: PBField
+	func get_f_opt_int32() -> int:
 		return _f_opt_int32.value
-	func clear_f_opt_int32():
+	func clear_f_opt_int32() -> void:
 		_f_opt_int32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-	func set_f_opt_int32(value):
+	func set_f_opt_int32(value : int) -> void:
 		_f_opt_int32.value = value
 	
-	var _f_opt_float
-	func get_f_opt_float():
+	var _f_opt_float: PBField
+	func get_f_opt_float() -> float:
 		return _f_opt_float.value
-	func clear_f_opt_float():
+	func clear_f_opt_float() -> void:
 		_f_opt_float.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT]
-	func set_f_opt_float(value):
+	func set_f_opt_float(value : float) -> void:
 		_f_opt_float.value = value
 	
-	var _f_opt_string
-	func get_f_opt_string():
+	var _f_opt_string: PBField
+	func get_f_opt_string() -> String:
 		return _f_opt_string.value
-	func clear_f_opt_string():
+	func clear_f_opt_string() -> void:
 		_f_opt_string.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
-	func set_f_opt_string(value):
+	func set_f_opt_string(value : String) -> void:
 		_f_opt_string.value = value
 	
-	var _f_opt_inner_req
-	func get_f_opt_inner_req():
+	var _f_opt_inner_req: PBField
+	func get_f_opt_inner_req() -> Test3.InnerReq:
 		return _f_opt_inner_req.value
-	func clear_f_opt_inner_req():
+	func clear_f_opt_inner_req() -> void:
 		_f_opt_inner_req.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func new_f_opt_inner_req():
+	func new_f_opt_inner_req() -> Test3.InnerReq:
 		_f_opt_inner_req.value = Test3.InnerReq.new()
 		return _f_opt_inner_req.value
 	
-	var _f_opt_inner_opt
-	func get_f_opt_inner_opt():
+	var _f_opt_inner_opt: PBField
+	func get_f_opt_inner_opt() -> Test3.InnerOpt:
 		return _f_opt_inner_opt.value
-	func clear_f_opt_inner_opt():
+	func clear_f_opt_inner_opt() -> void:
 		_f_opt_inner_opt.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func new_f_opt_inner_opt():
+	func new_f_opt_inner_opt() -> Test3.InnerOpt:
 		_f_opt_inner_opt.value = Test3.InnerOpt.new()
 		return _f_opt_inner_opt.value
 	
-	var _f_opt_inner_rep
-	func get_f_opt_inner_rep():
+	var _f_opt_inner_rep: PBField
+	func get_f_opt_inner_rep() -> Test3.InnerRep:
 		return _f_opt_inner_rep.value
-	func clear_f_opt_inner_rep():
+	func clear_f_opt_inner_rep() -> void:
 		_f_opt_inner_rep.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func new_f_opt_inner_rep():
+	func new_f_opt_inner_rep() -> Test3.InnerRep:
 		_f_opt_inner_rep.value = Test3.InnerRep.new()
 		return _f_opt_inner_rep.value
 	
-	var _f_rep_int32
-	func get_f_rep_int32():
+	var _f_rep_int32: PBField
+	func get_f_rep_int32() -> Array:
 		return _f_rep_int32.value
-	func clear_f_rep_int32():
+	func clear_f_rep_int32() -> void:
 		_f_rep_int32.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-	func add_f_rep_int32(value):
+	func add_f_rep_int32(value : int) -> void:
 		_f_rep_int32.value.append(value)
 	
-	var _f_rep_float
-	func get_f_rep_float():
+	var _f_rep_float: PBField
+	func get_f_rep_float() -> Array:
 		return _f_rep_float.value
-	func clear_f_rep_float():
+	func clear_f_rep_float() -> void:
 		_f_rep_float.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT]
-	func add_f_rep_float(value):
+	func add_f_rep_float(value : float) -> void:
 		_f_rep_float.value.append(value)
 	
-	var _f_rep_string
-	func get_f_rep_string():
+	var _f_rep_string: PBField
+	func get_f_rep_string() -> Array:
 		return _f_rep_string.value
-	func clear_f_rep_string():
+	func clear_f_rep_string() -> void:
 		_f_rep_string.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
-	func add_f_rep_string(value):
+	func add_f_rep_string(value : String) -> void:
 		_f_rep_string.value.append(value)
 	
-	var _f_rep_inner_req
-	func get_f_rep_inner_req():
+	var _f_rep_inner_req: PBField
+	func get_f_rep_inner_req() -> Array:
 		return _f_rep_inner_req.value
-	func clear_f_rep_inner_req():
+	func clear_f_rep_inner_req() -> void:
 		_f_rep_inner_req.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func add_f_rep_inner_req():
+	func add_f_rep_inner_req() -> Test3.InnerReq:
 		var element = Test3.InnerReq.new()
 		_f_rep_inner_req.value.append(element)
 		return element
 	
-	var _f_rep_inner_opt
-	func get_f_rep_inner_opt():
+	var _f_rep_inner_opt: PBField
+	func get_f_rep_inner_opt() -> Array:
 		return _f_rep_inner_opt.value
-	func clear_f_rep_inner_opt():
+	func clear_f_rep_inner_opt() -> void:
 		_f_rep_inner_opt.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func add_f_rep_inner_opt():
+	func add_f_rep_inner_opt() -> Test3.InnerOpt:
 		var element = Test3.InnerOpt.new()
 		_f_rep_inner_opt.value.append(element)
 		return element
 	
-	var _f_rep_inner_rep
-	func get_f_rep_inner_rep():
+	var _f_rep_inner_rep: PBField
+	func get_f_rep_inner_rep() -> Array:
 		return _f_rep_inner_rep.value
-	func clear_f_rep_inner_rep():
+	func clear_f_rep_inner_rep() -> void:
 		_f_rep_inner_rep.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MESSAGE]
-	func add_f_rep_inner_rep():
+	func add_f_rep_inner_rep() -> Test3.InnerRep:
 		var element = Test3.InnerRep.new()
 		_f_rep_inner_rep.value.append(element)
 		return element
@@ -2217,25 +2253,28 @@ class Test3:
 		func _init():
 			var service
 			
-			_f1 = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.REQUIRED, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
+			_f1 = PBField.new("f1", PB_DATA_TYPE.INT32, PB_RULE.REQUIRED, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
 			service = PBServiceField.new()
 			service.field = _f1
 			data[_f1.tag] = service
 			
 		var data = {}
 		
-		var _f1
-		func get_f1():
+		var _f1: PBField
+		func get_f1() -> int:
 			return _f1.value
-		func clear_f1():
+		func clear_f1() -> void:
 			_f1.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-		func set_f1(value):
+		func set_f1(value : int) -> void:
 			_f1.value = value
 		
-		func to_bytes():
+		func to_string() -> String:
+			return PBPacker.message_to_string(data)
+			
+		func to_bytes() -> PoolByteArray:
 			return PBPacker.pack_message(data)
 			
-		func from_bytes(bytes, offset = 0, limit = -1):
+		func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 			var cur_limit = bytes.size()
 			if limit != -1:
 				cur_limit = limit
@@ -2254,25 +2293,28 @@ class Test3:
 		func _init():
 			var service
 			
-			_f1 = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.OPTIONAL, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
+			_f1 = PBField.new("f1", PB_DATA_TYPE.INT32, PB_RULE.OPTIONAL, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
 			service = PBServiceField.new()
 			service.field = _f1
 			data[_f1.tag] = service
 			
 		var data = {}
 		
-		var _f1
-		func get_f1():
+		var _f1: PBField
+		func get_f1() -> int:
 			return _f1.value
-		func clear_f1():
+		func clear_f1() -> void:
 			_f1.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-		func set_f1(value):
+		func set_f1(value : int) -> void:
 			_f1.value = value
 		
-		func to_bytes():
+		func to_string() -> String:
+			return PBPacker.message_to_string(data)
+			
+		func to_bytes() -> PoolByteArray:
 			return PBPacker.pack_message(data)
 			
-		func from_bytes(bytes, offset = 0, limit = -1):
+		func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 			var cur_limit = bytes.size()
 			if limit != -1:
 				cur_limit = limit
@@ -2291,25 +2333,28 @@ class Test3:
 		func _init():
 			var service
 			
-			_f1 = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.REPEATED, 1, false, [])
+			_f1 = PBField.new("f1", PB_DATA_TYPE.INT32, PB_RULE.REPEATED, 1, false, [])
 			service = PBServiceField.new()
 			service.field = _f1
 			data[_f1.tag] = service
 			
 		var data = {}
 		
-		var _f1
-		func get_f1():
+		var _f1: PBField
+		func get_f1() -> Array:
 			return _f1.value
-		func clear_f1():
+		func clear_f1() -> void:
 			_f1.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-		func add_f1(value):
+		func add_f1(value : int) -> void:
 			_f1.value.append(value)
 		
-		func to_bytes():
+		func to_string() -> String:
+			return PBPacker.message_to_string(data)
+			
+		func to_bytes() -> PoolByteArray:
 			return PBPacker.pack_message(data)
 			
-		func from_bytes(bytes, offset = 0, limit = -1):
+		func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 			var cur_limit = bytes.size()
 			if limit != -1:
 				cur_limit = limit
@@ -2324,10 +2369,13 @@ class Test3:
 				return PB_ERR.PARSE_INCOMPLETE
 			return result
 		
-	func to_bytes():
+	func to_string() -> String:
+		return PBPacker.message_to_string(data)
+		
+	func to_bytes() -> PoolByteArray:
 		return PBPacker.pack_message(data)
 		
-	func from_bytes(bytes, offset = 0, limit = -1):
+	func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 		var cur_limit = bytes.size()
 		if limit != -1:
 			cur_limit = limit
@@ -2346,27 +2394,27 @@ class Test4:
 	func _init():
 		var service
 		
-		_f1 = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.OPTIONAL, 10, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
+		_f1 = PBField.new("f1", PB_DATA_TYPE.INT32, PB_RULE.OPTIONAL, 10, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
 		service = PBServiceField.new()
 		service.field = _f1
 		data[_f1.tag] = service
 		
-		_f2 = PBField.new(PB_DATA_TYPE.STRING, PB_RULE.OPTIONAL, 3, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
+		_f2 = PBField.new("f2", PB_DATA_TYPE.STRING, PB_RULE.OPTIONAL, 3, false, DEFAULT_VALUES_2[PB_DATA_TYPE.STRING])
 		service = PBServiceField.new()
 		service.field = _f2
 		data[_f2.tag] = service
 		
-		_f3 = PBField.new(PB_DATA_TYPE.FLOAT, PB_RULE.OPTIONAL, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT])
+		_f3 = PBField.new("f3", PB_DATA_TYPE.FLOAT, PB_RULE.OPTIONAL, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT])
 		service = PBServiceField.new()
 		service.field = _f3
 		data[_f3.tag] = service
 		
-		_f4 = PBField.new(PB_DATA_TYPE.DOUBLE, PB_RULE.OPTIONAL, 160, false, DEFAULT_VALUES_2[PB_DATA_TYPE.DOUBLE])
+		_f4 = PBField.new("f4", PB_DATA_TYPE.DOUBLE, PB_RULE.OPTIONAL, 160, false, DEFAULT_VALUES_2[PB_DATA_TYPE.DOUBLE])
 		service = PBServiceField.new()
 		service.field = _f4
 		data[_f4.tag] = service
 		
-		_f5 = PBField.new(PB_DATA_TYPE.MAP, PB_RULE.REPEATED, 99, false, [])
+		_f5 = PBField.new("f5", PB_DATA_TYPE.MAP, PB_RULE.REPEATED, 99, false, [])
 		service = PBServiceField.new()
 		service.field = _f5
 		service.func_ref = funcref(self, "add_empty_f5")
@@ -2374,50 +2422,50 @@ class Test4:
 		
 	var data = {}
 	
-	var _f1
-	func get_f1():
+	var _f1: PBField
+	func get_f1() -> int:
 		return _f1.value
-	func clear_f1():
+	func clear_f1() -> void:
 		_f1.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-	func set_f1(value):
+	func set_f1(value : int) -> void:
 		_f1.value = value
 	
-	var _f2
-	func get_f2():
+	var _f2: PBField
+	func get_f2() -> String:
 		return _f2.value
-	func clear_f2():
+	func clear_f2() -> void:
 		_f2.value = DEFAULT_VALUES_2[PB_DATA_TYPE.STRING]
-	func set_f2(value):
+	func set_f2(value : String) -> void:
 		_f2.value = value
 	
-	var _f3
-	func get_f3():
+	var _f3: PBField
+	func get_f3() -> float:
 		return _f3.value
-	func clear_f3():
+	func clear_f3() -> void:
 		_f3.value = DEFAULT_VALUES_2[PB_DATA_TYPE.FLOAT]
-	func set_f3(value):
+	func set_f3(value : float) -> void:
 		_f3.value = value
 	
-	var _f4
-	func get_f4():
+	var _f4: PBField
+	func get_f4() -> float:
 		return _f4.value
-	func clear_f4():
+	func clear_f4() -> void:
 		_f4.value = DEFAULT_VALUES_2[PB_DATA_TYPE.DOUBLE]
-	func set_f4(value):
+	func set_f4(value : float) -> void:
 		_f4.value = value
 	
-	var _f5
+	var _f5: PBField
 	func get_raw_f5():
 		return _f5.value
 	func get_f5():
 		return PBPacker.construct_map(_f5.value)
 	func clear_f5():
 		_f5.value = DEFAULT_VALUES_2[PB_DATA_TYPE.MAP]
-	func add_empty_f5():
+	func add_empty_f5() -> int:
 		var element = Test4.map_type_f5.new()
 		_f5.value.append(element)
 		return element
-	func add_f5(a_key, a_value):
+	func add_f5(a_key, a_value) -> void:
 		var idx = -1
 		for i in range(_f5.value.size()):
 			if _f5.value[i].get_key() == a_key:
@@ -2435,38 +2483,41 @@ class Test4:
 		func _init():
 			var service
 			
-			_key = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.REQUIRED, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
+			_key = PBField.new("key", PB_DATA_TYPE.INT32, PB_RULE.REQUIRED, 1, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
 			service = PBServiceField.new()
 			service.field = _key
 			data[_key.tag] = service
 			
-			_value = PBField.new(PB_DATA_TYPE.INT32, PB_RULE.REQUIRED, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
+			_value = PBField.new("value", PB_DATA_TYPE.INT32, PB_RULE.REQUIRED, 2, false, DEFAULT_VALUES_2[PB_DATA_TYPE.INT32])
 			service = PBServiceField.new()
 			service.field = _value
 			data[_value.tag] = service
 			
 		var data = {}
 		
-		var _key
-		func get_key():
+		var _key: PBField
+		func get_key() -> int:
 			return _key.value
-		func clear_key():
+		func clear_key() -> void:
 			_key.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-		func set_key(value):
+		func set_key(value : int) -> void:
 			_key.value = value
 		
-		var _value
-		func get_value():
+		var _value: PBField
+		func get_value() -> int:
 			return _value.value
-		func clear_value():
+		func clear_value() -> void:
 			_value.value = DEFAULT_VALUES_2[PB_DATA_TYPE.INT32]
-		func set_value(value):
+		func set_value(value : int) -> void:
 			_value.value = value
 		
-		func to_bytes():
+		func to_string() -> String:
+			return PBPacker.message_to_string(data)
+			
+		func to_bytes() -> PoolByteArray:
 			return PBPacker.pack_message(data)
 			
-		func from_bytes(bytes, offset = 0, limit = -1):
+		func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 			var cur_limit = bytes.size()
 			if limit != -1:
 				cur_limit = limit
@@ -2481,10 +2532,13 @@ class Test4:
 				return PB_ERR.PARSE_INCOMPLETE
 			return result
 		
-	func to_bytes():
+	func to_string() -> String:
+		return PBPacker.message_to_string(data)
+		
+	func to_bytes() -> PoolByteArray:
 		return PBPacker.pack_message(data)
 		
-	func from_bytes(bytes, offset = 0, limit = -1):
+	func from_bytes(bytes : PoolByteArray, offset : int = 0, limit : int = -1) -> int:
 		var cur_limit = bytes.size()
 		if limit != -1:
 			cur_limit = limit

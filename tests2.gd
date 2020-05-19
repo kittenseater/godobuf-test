@@ -120,7 +120,7 @@ func exec(save_to_file, test_names):
 		var godot_rv = test_func.call_func(packed_object)
 		if save_to_file:
 			var out_file_name = "res://testout2/" + test_name[FUNC_NAME] + ".v2godobuf";
-			var out_file = File.new(out_file_name)
+			var out_file = File.new()
 			if out_file.open(out_file_name, out_file.WRITE) == 0:
 				out_file.store_buffer(godot_rv)
 				out_file.close()
@@ -155,6 +155,7 @@ func exec(save_to_file, test_names):
 				compare_result = "FAIL: can't read '" + erl_file_path + "'"
 		else:
 			compare_result = "FAIL: '" + erl_file_path + "' not exist"
+		print("[pretty print   ] ", packed_object.to_string())
 		print("[bin godobuf    ] ", str_raw_array(godot_rv))
 		print("[bin protobuf   ] ", erl_result)
 		print("[bin compare    ] ", compare_result)
